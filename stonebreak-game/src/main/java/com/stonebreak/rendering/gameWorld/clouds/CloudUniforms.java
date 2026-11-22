@@ -41,6 +41,11 @@ public final class CloudUniforms {
     /** Units of the shape and detail noise volumes ({@link #applyShapeTo}): the cloud passes' own. */
     static final int SHAPE_NOISE_TEXTURE_UNIT = 12;
     static final int DETAIL_NOISE_TEXTURE_UNIT = 13;
+    /** Units of the curl noise and the site cache's three textures ({@link CloudSiteCache}): clear of 5-25. */
+    static final int CURL_NOISE_TEXTURE_UNIT = 26;
+    static final int SITE_CACHE_A_TEXTURE_UNIT = 27;
+    static final int SITE_CACHE_B_TEXTURE_UNIT = 28;
+    static final int SITE_CACHE_C_TEXTURE_UNIT = 29;
     /** Blocks per wrap of {@code u_cloudOffset} (and of the cloud map). */
     public static final int MAP_PERIOD_BLOCKS = CloudMap.PERIOD_BLOCKS;
 
@@ -56,6 +61,9 @@ public final class CloudUniforms {
     private static final Vector2f FLOW_PASS = new Vector2f(TerrainFlow.PASS_MASS_LO, TerrainFlow.PASS_MASS_HI);
     private static final Vector4f ORGANISED = new Vector4f(CloudField.ORGANISED_WEIGHT,
             CloudField.ORGANISED_LO, CloudField.ORGANISED_HI, CloudField.FAIR_ORGANISATION);
+    private static final Vector2f LEAN = new Vector2f(CloudField.windDirX() * CloudField.SHEAR,
+            CloudField.windDirZ() * CloudField.SHEAR);
+    private static final Vector2f WIND_DIR = new Vector2f(CloudField.windDirX(), CloudField.windDirZ());
     private static final Vector2f ORGANISED_LIFT = new Vector2f(CloudField.ORGANISED_COVERAGE_LIFT,
             CloudField.ORGANISED_WETNESS_LIFT);
     /** The weather is applied on the GPU; the threshold uniform is the unbiased one. */
@@ -89,6 +97,7 @@ public final class CloudUniforms {
     private int terrainFlowTexture;
     private int shapeNoise;
     private int detailNoise;
+    private int curlNoise;
     private float shapeRise;
     private float detailRise;
 
@@ -109,9 +118,10 @@ public final class CloudUniforms {
     }
 
     /** The noise that carves the cloud's body this frame, and how far each has risen. */
-    void prepareShape(int shapeNoise, int detailNoise, float shapeRise, float detailRise) {
+    void prepareShape(int shapeNoise, int detailNoise, int curlNoise, float shapeRise, float detailRise) {
         this.shapeNoise = shapeNoise;
         this.detailNoise = detailNoise;
+        this.curlNoise = curlNoise;
         this.shapeRise = shapeRise;
         this.detailRise = detailRise;
     }
@@ -191,6 +201,8 @@ public final class CloudUniforms {
         shader.setBool("u_cloudShadowsEnabled", shadowsEnabled && mapTexture != 0);
         shader.setVec3("u_cloudSunDir", sunDir);
         shader.setFloat("u_cloudShadowY", SHADOW_Y);
+        shader.setVec2("u_cloudLean", LEAN);
+        shader.setFloat("u_cloudLeanPivot", CloudField.SHEAR_PIVOT_Y);
     }
 
     /**
@@ -204,6 +216,8 @@ public final class CloudUniforms {
         glBindTexture(GL12.GL_TEXTURE_3D, shapeNoise);
         GL13.glActiveTexture(GL13.GL_TEXTURE0 + DETAIL_NOISE_TEXTURE_UNIT);
         glBindTexture(GL12.GL_TEXTURE_3D, detailNoise);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0 + CURL_NOISE_TEXTURE_UNIT);
+        glBindTexture(GL_TEXTURE_2D, curlNoise);
         GL13.glActiveTexture(previous);
 
         shader.setInt("u_shapeNoise", SHAPE_NOISE_TEXTURE_UNIT);
@@ -212,5 +226,14 @@ public final class CloudUniforms {
         shader.setFloat("u_detailTile", CloudNoiseTextures.DETAIL_TILE_BLOCKS);
         shader.setFloat("u_shapeRise", shapeRise);
         shader.setFloat("u_detailRise", detailRise);
+        shader.setInt("u_curlNoise", CURL_NOISE_TEXTURE_UNIT);
+        shader.setFloat("u_curlTile", CloudNoiseTextures.CURL_TILE_BLOCKS);
+        shader.setVec2("u_cloudWindDir", WIND_DIR);
+        // The site cache is off unless CloudSiteCache.applyTo turns it on (the march); its samplers still get
+        // their own units so they never alias another sampler type on unit 0.
+        shader.setBool("u_siteCacheOn", false);
+        shader.setInt("u_siteCacheA", SITE_CACHE_A_TEXTURE_UNIT);
+        shader.setInt("u_siteCacheB", SITE_CACHE_B_TEXTURE_UNIT);
+        shader.setInt("u_siteCacheC", SITE_CACHE_C_TEXTURE_UNIT);
     }
 }

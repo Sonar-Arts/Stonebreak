@@ -48,6 +48,13 @@ uniform sampler2D u_terrainFlowMap;
 uniform float u_flowClipSink;
 uniform vec2 u_flowCover;   // converge, pile-up coverage
 uniform vec2 u_flowPass;    // mass from which cloud starts to ride over ground, and fully does
+// Wind shear (CloudField.SHEAR): the cloud at height y is the field drawn
+// downwind by u_cloudLean * (y - u_cloudLeanPivot) blocks, so towers lean with
+// the wind and their tops trail ahead of their bases. The 2D column queries
+// (cloudColumnAt, ClientWeather.columnAt on the CPU) are the cloud at the
+// pivot altitude, the cumulus base, where rain and its fog start.
+uniform vec2 u_cloudLean;       // blocks downwind per block of height
+uniform float u_cloudLeanPivot; // altitude with no lean
 
 struct CloudColumn {
     float density;  // 0 = clear
@@ -214,12 +221,25 @@ CloudColumn cloudColumnAt(vec2 xz, out vec2 shift) {
     return cloudColumnOver(xz, cloudReliefAt(xz), shift);
 }
 
-// cloudColumnAt at render-space p, plus `clip`: how much of it survives the
-// ground there (multiply it into density).
+// How far the wind shear has carried the cloud at height y downwind (render-space XZ blocks).
+vec2 cloudLeanAt(float y) {
+    return u_cloudLean * (y - u_cloudLeanPivot);
+}
+
+// The terrain surface under render-space xz (one tap; cloudReliefAt reads the flow too).
+float cloudGroundAt(vec2 renderXZ) {
+    vec2 uv = (renderXZ + u_worldOffset) / (u_cloudCell * vec2(textureSize(u_terrainMap, 0)));
+    return texture(u_terrainMap, uv).r;
+}
+
+// The column of the cloud at render-space p (leaned with its height, see
+// u_cloudLean), plus `clip`: how much of it survives the ground there
+// (multiply it into density).
 CloudColumn cloudColumnLocal(vec3 p, out float clip, out vec2 shift) {
-    CloudRelief r = cloudReliefAt(p.xz);
+    vec2 xz = p.xz - cloudLeanAt(p.y);
+    CloudRelief r = cloudReliefAt(xz);
     clip = cloudTerrainClip(r, p.y);
-    return cloudColumnOver(p.xz, r, shift);
+    return cloudColumnOver(xz, r, shift);
 }
 
 // CloudColumn.precipitation: rain or snow falling from a column, 0..1.

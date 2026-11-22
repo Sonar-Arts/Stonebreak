@@ -23,6 +23,21 @@ public final class WeatherState {
     private static final double CONVERGE_FRACTION = 0.25;
     /** Most zones a world keeps; placing another drops the oldest. */
     public static final int MAX_ZONES = 16;
+    /**
+     * Dev hook: {@code -Dstonebreak.weatherclock=<seconds>} holds every weather clock (server and client) at that
+     * time, so cloud A/B shots and benches see the identical sky run after run. NaN = free-running.
+     */
+    private static final double PINNED_SECONDS = pinned();
+
+    private static double pinned() {
+        String v = System.getProperty("stonebreak.weatherclock");
+        if (v == null || v.isBlank()) return Double.NaN;
+        try {
+            return Double.parseDouble(v.trim());
+        } catch (NumberFormatException e) {
+            return Double.NaN;
+        }
+    }
 
     // Volatile: the server ticks these while the save thread snapshots them.
     private volatile double seconds;
@@ -35,17 +50,22 @@ public final class WeatherState {
     }
 
     public WeatherState(double seconds, WeatherMode mode, List<WeatherZone> zones) {
-        this.seconds = seconds;
+        this.seconds = Double.isNaN(PINNED_SECONDS) ? seconds : PINNED_SECONDS;
         this.mode = mode;
         this.zones = List.copyOf(zones);
     }
 
     public void advance(float deltaSeconds) {
+        if (!Double.isNaN(PINNED_SECONDS)) {
+            seconds = PINNED_SECONDS;
+            return;
+        }
         if (deltaSeconds > 0f) seconds += deltaSeconds;
     }
 
     /** Converges toward the server's clock; large errors snap. */
     public void nudgeTo(double serverSeconds) {
+        if (!Double.isNaN(PINNED_SECONDS)) return;
         double delta = serverSeconds - seconds;
         seconds += Math.abs(delta) > SNAP_THRESHOLD_SECONDS ? delta : delta * CONVERGE_FRACTION;
     }
@@ -59,7 +79,7 @@ public final class WeatherState {
      * client alone, and the server adopts that clock when the player resumes.
      */
     public void setSeconds(double seconds) {
-        if (Double.isFinite(seconds)) {
+        if (Double.isFinite(seconds) && Double.isNaN(PINNED_SECONDS)) {
             this.seconds = seconds;
         }
     }

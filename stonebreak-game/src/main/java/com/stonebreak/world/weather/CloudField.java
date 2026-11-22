@@ -29,6 +29,27 @@ public final class CloudField {
     public static final double WIND_X = 0.6;
     public static final double WIND_Z = 0.15;
 
+    /**
+     * Wind shear: wind strengthens with height, so a cloud's upper parts are carried downwind of its base and towers
+     * lean. Blocks downwind per block above {@link #SHEAR_PIVOT_Y}; the drawn cloud at height y is the field shifted
+     * that far (cloud_field.glsl {@code cloudLeanAt}). The field's 2D columns ({@link ClientWeather#columnAt},
+     * {@code cloudColumnAt}) are the cloud at the pivot, so rain and its fog, which start at a cloud's base, stay
+     * under the cloud drawn there: bases sit 24 blocks below the pivot at most (storms), 7 blocks of lean.
+     */
+    public static final float SHEAR = 0.3f;
+    /** Altitude with no lean: the cumulus base. */
+    public static final float SHEAR_PIVOT_Y = 176f;
+
+    /** Unit wind direction, x component (render space XZ). */
+    public static float windDirX() {
+        return (float) (WIND_X / Math.hypot(WIND_X, WIND_Z));
+    }
+
+    /** Unit wind direction, z component. */
+    public static float windDirZ() {
+        return (float) (WIND_Z / Math.hypot(WIND_X, WIND_Z));
+    }
+
     /** Coverage noise above this (at zero bias) starts to cloud. */
     static final float COVERAGE_THRESHOLD = 0.58f;
     /** How far the bias moves the threshold: bias -1 lifts it out of reach, +1 overcasts. */

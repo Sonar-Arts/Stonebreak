@@ -57,7 +57,11 @@ void main() {
     }
     float bottom = max(ground, uCameraPos.y - uBelow);
     // Nothing drawn above (NO_UNDERSIDE), or the camera above the cloud: no lane.
-    float top = cloudUnderside(site, LANE_FOOTPRINT, true);
+    // The cloud drawn above the lane is leaned downwind with height (wind
+    // shear, u_cloudLean): search the column the cloud at its base came from.
+    // (`site` is the field at the lean pivot, which is what rains.)
+    CloudSite drawn = cloudSiteAtHeight(lane.xz, site.bottom);
+    float top = cloudUnderside(drawn, LANE_FOOTPRINT, true);
     if (top <= bottom) return;
     laneOut = vec4(intensity, top, bottom, snow);
 }

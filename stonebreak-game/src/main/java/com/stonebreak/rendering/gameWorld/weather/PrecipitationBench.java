@@ -50,6 +50,8 @@ public final class PrecipitationBench {
         ENTITIES(true),
         /** Lightning + volumetric clouds. */
         CLOUDS(true),
+        /** The cloud site cache build (inside CLOUDS). */
+        CLOUD_SITE(true),
         /** The dedicated water pass (near + LOD water). */
         WATER(true);
 

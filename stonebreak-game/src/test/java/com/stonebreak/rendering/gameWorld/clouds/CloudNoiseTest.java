@@ -29,23 +29,35 @@ class CloudNoiseTest {
 
     @Test
     void opposingFacesOfTheVolumeMeet() {
-        // Neighbouring texels across the wrap must differ no more than neighbours inside it.
+        // Neighbouring texels across the wrap must differ no more than neighbours inside it, in every channel.
         int size = 32;
+        int n = CloudNoise.SHAPE_CHANNELS;
         byte[] v = CloudNoise.shape(size);
-        float inner = 0, seam = 0;
-        for (int z = 0; z < size; z++) {
-            for (int y = 0; y < size; y++) {
-                int row = (z * size + y) * size;
-                seam += Math.abs((v[row + size - 1] & 0xFF) - (v[row] & 0xFF));
-                inner += Math.abs((v[row + size / 2 - 1] & 0xFF) - (v[row + size / 2] & 0xFF));
+        for (int ch = 0; ch < n; ch++) {
+            float inner = 0, seam = 0;
+            for (int z = 0; z < size; z++) {
+                for (int y = 0; y < size; y++) {
+                    int row = (z * size + y) * size;
+                    seam += Math.abs((v[(row + size - 1) * n + ch] & 0xFF) - (v[row * n + ch] & 0xFF));
+                    inner += Math.abs((v[(row + size / 2 - 1) * n + ch] & 0xFF) - (v[(row + size / 2) * n + ch] & 0xFF));
+                }
             }
+            assertTrue(seam < inner * 1.5f, "channel " + ch + ": seam " + seam + " vs inner " + inner);
         }
-        assertTrue(seam < inner * 1.5f, "seam " + seam + " vs inner " + inner);
     }
 
     @Test
     void valuesSpreadOverTheRange() {
-        for (byte[] v : new byte[][]{CloudNoise.shape(32), CloudNoise.detail(32)}) {
+        byte[] shape = CloudNoise.shape(32);
+        int n = CloudNoise.SHAPE_CHANNELS;
+        java.util.List<byte[]> channels = new java.util.ArrayList<>();
+        for (int ch = 0; ch < n; ch++) {
+            byte[] c = new byte[shape.length / n];
+            for (int i = 0; i < c.length; i++) c[i] = shape[i * n + ch];
+            channels.add(c);
+        }
+        channels.add(CloudNoise.detail(32));
+        for (byte[] v : channels) {
             int[] histogram = new int[4];
             for (byte b : v) histogram[(b & 0xFF) / 64]++;
             for (int quarter : histogram) {
@@ -53,6 +65,43 @@ class CloudNoiseTest {
                         + java.util.Arrays.toString(histogram));
             }
         }
+    }
+
+    @Test
+    void turretsAreCoarserThanBillows() {
+        // G is the same recipe an octave down: neighbouring texels differ less.
+        int size = 32;
+        byte[] v = CloudNoise.shape(size);
+        float[] step = new float[2];
+        for (int i = 0; i + 1 < size * size * size; i++) {
+            if ((i + 1) % size == 0) continue;
+            for (int ch = 0; ch < 2; ch++) {
+                step[ch] += Math.abs((v[i * 2 + ch] & 0xFF) - (v[(i + 1) * 2 + ch] & 0xFF));
+            }
+        }
+        assertTrue(step[1] < step[0] * 0.8f, "billows " + step[0] + " vs turrets " + step[1]);
+    }
+
+    @Test
+    void curlTilesIsUnitBoundedAndDivergenceFree() {
+        int size = 64;
+        float[] c = CloudNoise.curl(size);
+        float max = 0f, div = 0f, mag = 0f;
+        for (int j = 0; j < size; j++) {
+            for (int i = 0; i < size; i++) {
+                float x = c[(j * size + i) * 2], z = c[(j * size + i) * 2 + 1];
+                max = Math.max(max, (float) Math.hypot(x, z));
+                mag += Math.abs(x) + Math.abs(z);
+                // central-difference divergence over the wrap (the field must tile seamlessly for this to hold at
+                // the edges too)
+                float dx = c[(j * size + Math.floorMod(i + 1, size)) * 2] - c[(j * size + Math.floorMod(i - 1, size)) * 2];
+                float dz = c[(Math.floorMod(j + 1, size) * size + i) * 2 + 1]
+                        - c[(Math.floorMod(j - 1, size) * size + i) * 2 + 1];
+                div += Math.abs(dx + dz);
+            }
+        }
+        assertEquals(1f, max, 1e-4f);
+        assertTrue(div < mag * 0.05f, "divergence " + div + " vs magnitude " + mag);
     }
 
     @Test

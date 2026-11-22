@@ -73,6 +73,7 @@ public final class CloudRenderer {
     private final WeatherMapTexture weatherMap = new WeatherMapTexture();
     private final TerrainMap terrainMap = new TerrainMap();
     private final CloudNoiseTextures noise = new CloudNoiseTextures();
+    private final CloudSiteCache siteCache = new CloudSiteCache();
     private final CloudUniforms uniforms = new CloudUniforms();
     private final SceneDepthCopy sceneDepth = new SceneDepthCopy();
     private final FullscreenQuad quad = new FullscreenQuad();
@@ -146,7 +147,7 @@ public final class CloudRenderer {
         }
         double s = weather.seconds();
         // Wrapped to a tile in double precision, so float precision never runs out.
-        uniforms.prepareShape(noise.shape(), noise.detail(),
+        uniforms.prepareShape(noise.shape(), noise.detail(), noise.curl(),
                 (float) (s * SHAPE_RISE_SPEED % CloudNoiseTextures.SHAPE_TILE_BLOCKS),
                 (float) (s * DETAIL_RISE_SPEED % CloudNoiseTextures.DETAIL_TILE_BLOCKS));
         int previousUnit = glGetInteger(GL13.GL_ACTIVE_TEXTURE);
@@ -197,6 +198,12 @@ public final class CloudRenderer {
                        PrecipitationFog fog, GroundFog groundFog, float reach) {
         if (!prepared) return;
 
+        // The march's columns, resolved once for this frame (restores what it touches).
+        var bench = com.stonebreak.rendering.gameWorld.weather.PrecipitationBench.get();
+        if (bench != null) bench.begin(com.stonebreak.rendering.gameWorld.weather.PrecipitationBench.Section.CLOUD_SITE);
+        siteCache.build(uniforms, renderCameraPos);
+        if (bench != null) bench.end(com.stonebreak.rendering.gameWorld.weather.PrecipitationBench.Section.CLOUD_SITE);
+
         // Save state.
         // Both bindings: binding the cloud target sets the READ framebuffer too, and a
         // stale read binding makes the next frame's depth copies (water, clouds) read
@@ -243,6 +250,7 @@ public final class CloudRenderer {
         marchShader.bind();
         uniforms.applyTo(marchShader);
         uniforms.applyShapeTo(marchShader);
+        siteCache.applyTo(marchShader);
         marchShader.setInt("u_sceneDepth", SCRATCH_TEXTURE_UNIT);
         marchShader.setMat4("u_invViewProj", invViewProj.set(projection).mul(view).invert());
         marchShader.setVec3("u_camPos", renderCameraPos);
@@ -268,6 +276,7 @@ public final class CloudRenderer {
             marchShader.setVec4(FLASH_UNIFORMS[i], i < flashes.length ? flashes[i] : NO_FLASH);
         }
         quad.draw();
+        siteCache.unbind();
 
         // Pass 2: blend into the reprojected history. Camera-relative, so a
         // render-origin rebase between frames doesn't break the reprojection.
@@ -430,6 +439,7 @@ public final class CloudRenderer {
         weatherMap.cleanup();
         terrainMap.cleanup();
         noise.cleanup();
+        siteCache.cleanup();
         sceneDepth.cleanup();
         quad.cleanup();
         marchShader.cleanup();

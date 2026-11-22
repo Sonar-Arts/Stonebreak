@@ -15,7 +15,12 @@ package com.stonebreak.world.weather;
 public enum CloudType {
     //            baseY  maxHeight  sigma   albedo  rain   storm
     CUMULUS      (176,   64,        0.060f, 1.00f,  0f,    false),
-    STRATUS      (200,   8,         0.025f, 0.95f,  0f,    false),
+    // Stratus shares the cumulus base: cloud edges are drier than their hearts (the
+    // wetness carries some of the cumulus noise), so every fair-weather cloud's rim
+    // blends into stratus. With a higher base (it was 200) and 8 blocks of height,
+    // each rim thinned to a sheet and curled up 24 blocks: paper-thin edges curving
+    // upward. Real stratus is the lowest layer anyway.
+    STRATUS      (176,   20,        0.025f, 0.95f,  0f,    false),
     NIMBOSTRATUS (160,   48,        0.090f, 0.62f,  0.7f,  false),
     CUMULONIMBUS (152,   136,       0.140f, 0.52f,  1f,    true);
 

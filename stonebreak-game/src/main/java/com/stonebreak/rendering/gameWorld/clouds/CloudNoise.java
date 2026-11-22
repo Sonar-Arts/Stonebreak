@@ -4,17 +4,25 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 /**
- * The tileable 3D noise the clouds are sculpted from, after the shape/detail
+ * The tileable noise the clouds are sculpted from, after the shape/detail
  * split of real-time cloud renderers (Schneider, "The Real-time Volumetric
- * Cloudscapes of Horizon Zero Dawn"):
+ * Cloudscapes of Horizon Zero Dawn", SIGGRAPH 2015):
  * <ul>
  *   <li>{@link #shape}: Perlin-Worley — Perlin noise with Worley cells pressed
  *       into it. Worley's inverted cells are round and clumped, the billows of
- *       a cumulus; the Perlin keeps them connected into one cloud body.</li>
+ *       a cumulus; the Perlin keeps them connected into one cloud body. Two
+ *       channels, the same recipe one octave apart: R = billows (4 cells per
+ *       tile), G = turrets twice as large (2 cells). Real cumulus are fractal,
+ *       a big cloud's lumps are big, so the shader mixes G in with a column's
+ *       height: a storm tower is built of turrets, a fair-weather cumulus of
+ *       billows.</li>
  *   <li>{@link #detail}: Worley fBm, fine enough to fray a cloud's edges into
  *       wisps at its base and cauliflower at its top.</li>
+ *   <li>{@link #curl}: 2D curl noise (divergence-free), which bends the detail
+ *       lookup so frayed edges swirl like turbulent air instead of pitting in
+ *       round cells.</li>
  * </ul>
- * Each volume is stretched over the full byte range [0, 255] (the raw
+ * Each channel is stretched over the full byte range [0, 255] (the raw
  * noises bunch up), and repeats with period
  * {@code size} on every axis (lattices wrap), so a GL_REPEAT texture has no
  * seams. Pure arithmetic and deterministic, so it is testable and every
@@ -24,22 +32,67 @@ final class CloudNoise {
 
     private CloudNoise() {}
 
-    /** Perlin-Worley shape noise, {@code size}³ bytes, x fastest then y then z. */
+    /** Channels of {@link #shape}. */
+    static final int SHAPE_CHANNELS = 2;
+
+    /**
+     * Perlin-Worley shape noise, {@code size}³ texels of {@value #SHAPE_CHANNELS} bytes (R = billows, G = turrets),
+     * x fastest then y then z.
+     */
     static byte[] shape(int size) {
-        return build(size, (x, y, z) -> {
-            float perlin = 0.5f + 0.5f * (perlin(x, y, z, 4) * 0.5f
-                    + perlin(x, y, z, 8) * 0.3f + perlin(x, y, z, 16) * 0.2f);
-            float cells = worleyFbm(x, y, z, 4);
-            // Perlin-Worley: the Worley cells set the floor the Perlin rises from.
-            float pw = remap(Math.clamp(perlin, 0f, 1f), 0f, 1f, cells, 1f);
-            // Eaten into by the gaps of finer Worley, so billows stay round instead of smeared.
-            return pw - 0.4f * (1f - worleyFbm(x, y, z, 8));
-        });
+        byte[] billows = build(size, (x, y, z) -> perlinWorley(x, y, z, 4));
+        byte[] turrets = build(size, (x, y, z) -> perlinWorley(x, y, z, 2));
+        byte[] out = new byte[billows.length * SHAPE_CHANNELS];
+        for (int i = 0; i < billows.length; i++) {
+            out[i * SHAPE_CHANNELS] = billows[i];
+            out[i * SHAPE_CHANNELS + 1] = turrets[i];
+        }
+        return out;
+    }
+
+    /**
+     * Perlin-Worley with Worley cells {@code cells} per tile side: the Worley cells set the floor the Perlin rises
+     * from, then the gaps of Worley twice as fine eat into it, so billows stay round instead of smeared.
+     */
+    static float perlinWorley(float x, float y, float z, int cells) {
+        float perlin = 0.5f + 0.5f * (perlin(x, y, z, cells) * 0.5f
+                + perlin(x, y, z, cells * 2) * 0.3f + perlin(x, y, z, cells * 4) * 0.2f);
+        float pw = remap(Math.clamp(perlin, 0f, 1f), 0f, 1f, worleyFbm(x, y, z, cells), 1f);
+        return pw - 0.4f * (1f - worleyFbm(x, y, z, cells * 2));
     }
 
     /** Worley fBm detail noise, {@code size}³ bytes. */
     static byte[] detail(int size) {
         return build(size, (x, y, z) -> worleyFbm(x, y, z, 4));
+    }
+
+    /**
+     * 2D curl noise, {@code size}² texels of (x, z) pairs in [-1, 1] (x fastest): the curl of a tiling Perlin
+     * potential (two octaves, 4 and 8 cells per tile), so it swirls without sources or sinks, scaled so its
+     * largest magnitude is 1.
+     */
+    static float[] curl(int size) {
+        float[] psi = new float[size * size];
+        for (int j = 0; j < size; j++) {
+            for (int i = 0; i < size; i++) {
+                float x = (i + 0.5f) / size, z = (j + 0.5f) / size;
+                psi[j * size + i] = perlin(x, 0.37f, z, 4) + 0.5f * perlin(x, 0.71f, z, 8);
+            }
+        }
+        float[] out = new float[size * size * 2];
+        float max = 1e-6f;
+        for (int j = 0; j < size; j++) {
+            for (int i = 0; i < size; i++) {
+                float dx = psi[j * size + Math.floorMod(i + 1, size)] - psi[j * size + Math.floorMod(i - 1, size)];
+                float dz = psi[Math.floorMod(j + 1, size) * size + i] - psi[Math.floorMod(j - 1, size) * size + i];
+                // curl of a scalar potential in the plane: (d/dz, -d/dx)
+                out[(j * size + i) * 2] = dz;
+                out[(j * size + i) * 2 + 1] = -dx;
+                max = Math.max(max, (float) Math.sqrt(dx * dx + dz * dz));
+            }
+        }
+        for (int k = 0; k < out.length; k++) out[k] /= max;
+        return out;
     }
 
     @FunctionalInterface

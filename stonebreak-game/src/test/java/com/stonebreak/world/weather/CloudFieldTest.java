@@ -16,6 +16,22 @@ class CloudFieldTest {
     private static final int SPAN = 400;
 
     @Test
+    void shearPivotsAtTheCumulusBase() {
+        // The 2D columns rain and its fog hang from are the drawn cloud at the pivot: keep it at the cumulus base.
+        assertEquals(CloudType.CUMULUS.baseY, CloudField.SHEAR_PIVOT_Y, 0f);
+        assertEquals(1.0, Math.hypot(CloudField.windDirX(), CloudField.windDirZ()), 1e-6);
+        assertTrue(CloudField.windDirX() * CloudField.WIND_X > 0 && CloudField.windDirZ() * CloudField.WIND_Z > 0,
+                "the lean points downwind");
+    }
+
+    @Test
+    void stratusNeverSitsAboveTheCumulusBase() {
+        // Fair-weather cloud rims blend into stratus (drier than their hearts): a higher stratus base curled every
+        // rim up into a paper-thin sheet.
+        assertTrue(CloudType.STRATUS.baseY <= CloudType.CUMULUS.baseY);
+    }
+
+    @Test
     void sameSeedAndPositionAnswerIdentically() {
         CloudField a = new CloudField(SEED);
         CloudField b = new CloudField(SEED);

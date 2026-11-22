@@ -26,6 +26,9 @@
 // skylight follow the sky behind each cloud, gold only where it is gold
 // (sunset_fog.glsl).
 //
+// Above the slab, a high cirrus layer (cirrusLayer): ice streaks combed out
+// along the wind, far above the cumulus, for depth.
+//
 // Output (half resolution): rgb = cloud light, premultiplied; a = how much of
 // the scene behind survives. Composite with blend (ONE, SRC_ALPHA). Second
 // output: how far along the ray the cloud a pixel shows sits, which the
@@ -83,9 +86,29 @@ const float MAX_STEP_DEPTH = 0.35;
 // ...and stride this much longer through clear sky.
 const float EMPTY_STRIDE = 2.0;
 // Sun march: LIGHT_STEPS steps, the first LIGHT_STEP0 blocks, each LIGHT_GROWTH longer.
-const int LIGHT_STEPS = 5;
+const int LIGHT_STEPS = 4;
 const float LIGHT_STEP0 = 3.0;
 const float LIGHT_GROWTH = 1.9;
+// One more, long sample beyond them (Schneider 2015), so a tall tower shades
+// its own lower flanks: the four steps reach only ~40 blocks, this one ~130.
+const float LIGHT_FAR_STEP = 90.0;
+// Distant cloud (a pixel wider than this many blocks, the threshold dithered
+// per pixel so the temporal pass hides it) takes three doubled steps over the
+// same reach: its fine self-shadowing is far below a pixel, and the horizon's
+// clouds are most of the pixels.
+const float LIGHT_LOD_FOOTPRINT = 1.5;
+// Once a ray is this opaque, its sun samples skip the detail noise: what is
+// left to see is dim (Schneider 2015: twice as fast, no visible change).
+const float CHEAP_LIGHT_BELOW = 0.7;
+// High cirrus layer (cirrusLayer). Tiles are blocks and divide the map period,
+// so the pattern never jumps when u_cloudOffset wraps.
+const float CIRRUS_Y = 560.0;
+const float CIRRUS_ALONG = 1536.0;  // streak noise tile along x (the wind runs mostly +x)...
+const float CIRRUS_ACROSS = 192.0;  // ...and across: fibres ~8x longer than wide
+const float CIRRUS_PATCH = 3072.0;  // where the cirrus is: patches ~800 blocks across
+const float CIRRUS_CURL = 24.0;     // fibres bend a little
+const float CIRRUS_OD = 0.9;        // optical depth at full density: always see-through
+const float CIRRUS_ALBEDO = 0.95;
 // Skylight occlusion: probe distance up, blocks; how strongly the cloud above
 // dims it (skylight scatters in from all around, so less than the sun); and
 // the most it may darken a point.
@@ -128,23 +151,33 @@ float sunsetFalloff(float cosTheta) {
 // same amount, so the face read as a flat wall.
 float skyVisibility(CloudSite site, float y, float footprint) {
     bool covered;
-    float od = extinction(cloudBodyAt(site, y + SKY_PROBE, footprint, false, covered)) * SKY_PROBE
-             + extinction(cloudBodyAt(site, y + 3.0 * SKY_PROBE, footprint, false, covered)) * 2.0 * SKY_PROBE;
+    // The anvil is left out: right under its overhang every point of a tower
+    // wall would lose the same sky and the wall would read as banded.
+    float od = extinction(cloudBodyAnvil(site, y + SKY_PROBE, footprint, false, false, covered)) * SKY_PROBE
+             + extinction(cloudBodyAnvil(site, y + 3.0 * SKY_PROBE, footprint, false, false, covered)) * 2.0 * SKY_PROBE;
     return exp(-SKY_OCCLUSION * od);
 }
 
 // Optical depth from p toward the sun, through the cloud above and around it.
-float sunOpticalDepth(vec3 p, vec3 dir, float footprint) {
+// `detail`: the first step reads the detail noise (it shapes the lit rim).
+// Anvil ice counts ANVIL_SHADOW of its depth: thin, forward-scattering, and a
+// full-strength shadow under a flat overhang reads as a band across the wall.
+float sunOpticalDepth(vec3 p, vec3 dir, float footprint, bool detail, float lodDither) {
+    bool coarse = footprint > LIGHT_LOD_FOOTPRINT * (0.75 + 0.5 * lodDither);
+    int steps = coarse ? LIGHT_STEPS - 1 : LIGHT_STEPS;
+    float growth = coarse ? 2.0 : LIGHT_GROWTH;   // coarse: 6 + 12 + 24 = 42, fine: 3 + 5.7 + 10.8 + 20.6 = 40
     float od = 0.0;
     float t = 0.0;
-    float ds = LIGHT_STEP0;
-    for (int i = 0; i < LIGHT_STEPS; i++) {
+    float ds = coarse ? 2.0 * LIGHT_STEP0 : LIGHT_STEP0;
+    for (int i = 0; i <= steps; i++) {
+        if (i == steps) ds = LIGHT_FAR_STEP;
         vec3 q = p + dir * (t + 0.5 * ds);
         if (q.y > u_slabTop) break;
         bool covered;
-        od += extinction(cloudAt(q, max(footprint, ds), i == 0, covered)) * ds;
+        CloudSample s = cloudAt(q, max(footprint, ds), detail && i == 0, covered);
+        od += extinction(s) * mix(1.0, ANVIL_SHADOW, s.anvil) * ds;
         t += ds;
-        ds *= LIGHT_GROWTH;
+        ds *= growth;
     }
     return od;
 }
@@ -170,6 +203,48 @@ float flashAt(vec3 p) {
         if (f.w > 0.0) sum += f.w * (1.0 - smoothstep(0.0, FLASH_RADIUS, distance(p, f.xyz)));
     }
     return sum;
+}
+
+// The high cirrus layer: one thin sheet of ice at CIRRUS_Y, far above the
+// cumulus, read once per pixel where the ray crosses it. Fibres combed along
+// the wind (the shape noise stretched 8:1, two octaves), bent by the curl
+// noise, in patches; more of it the cloudier the local weather. Visual only:
+// it rains nothing and casts no shadow, so nothing on the CPU mirrors it.
+// Returns rgb = light (premultiplied), a = opacity.
+vec4 cirrusLayer(vec3 ro, vec3 rd, float tLimit, float across, float pixelAngle,
+                 float cosTheta, vec3 sunLight, vec3 ambient, vec3 haze, out float tc) {
+    tc = (CIRRUS_Y - ro.y) / rd.y;
+    if (rd.y <= 1e-4 || tc <= 0.0 || tc >= tLimit) return vec4(0.0);
+    float dist = tc * across;
+    float fade = 1.0 - smoothstep(u_fadeStart, u_fadeEnd, dist);
+    if (fade <= 0.0) return vec4(0.0);
+    vec2 xz = (ro + rd * tc).xz;
+    vec2 c = xz + u_cloudOffset;
+    // A gentle bend, not a swirl: strong curl combed the fibres into whorls.
+    vec2 curl = textureLod(u_curlNoise, c / (u_curlTile * 4.0), 0.0).rg;
+    vec2 w = c + curl * CIRRUS_CURL;
+    float lod = noiseLod(u_shapeNoise, CIRRUS_ACROSS, tc * pixelAngle);
+    // Fibres along x and along the x+z diagonal (a + b and a - b shift by whole
+    // tiles when the offset wraps), so they cross and fray instead of lying in
+    // one regular set of parallel lines.
+    float f1 = textureLod(u_shapeNoise, vec3(w.x / CIRRUS_ALONG, 0.31, w.y / CIRRUS_ACROSS), lod).g;
+    vec2 diag = vec2(w.x + w.y, w.x - w.y);
+    float f2 = textureLod(u_shapeNoise, vec3(diag.x / (2.0 * CIRRUS_ALONG), 0.67, diag.y / (2.0 * CIRRUS_ACROSS)),
+            lod).r;
+    float patch = textureLod(u_shapeNoise, vec3(c.x / CIRRUS_PATCH, 0.83, c.y / CIRRUS_PATCH), 0.0).g;
+    float tilt = textureLod(u_shapeNoise, vec3(c.x / CIRRUS_PATCH, 0.17, c.y / CIRRUS_PATCH), 0.0).r;
+    float bias = cloudWeatherAt(xz).x;
+    float cover = smoothstep(0.6 - 0.2 * bias, 0.9 - 0.2 * bias, patch);
+    // Which fibre direction a patch combs, so neighbouring patches differ.
+    float fibre = mix(f1, f2, smoothstep(0.35, 0.65, tilt));
+    float d = cover * smoothstep(0.42, 0.88, fibre);
+    if (d <= 0.0) return vec4(0.0);
+    float alpha = (1.0 - exp(-CIRRUS_OD * d)) * fade;
+    // Ice scatters strongly forward: bright toward the sun, faint away from it.
+    vec3 lit = CIRRUS_ALBEDO * (sunLight * cloudPhase(cosTheta, 1.0) * 0.8 + ambient * 1.1);
+    lit = 1.0 - exp(-EXPOSURE * lit);
+    lit = mix(lit, haze, 0.65 * smoothstep(0.0, u_fadeEnd, dist));
+    return vec4(lit * alpha, alpha);
 }
 
 vec3 worldAt(vec2 uv, float depth) {
@@ -243,16 +318,18 @@ void main() {
 
     // Clip to the cloud slab.
     float tNear = 0.0, tFar = tReach;
+    bool slab = true;
     if (abs(rd.y) < 1e-5) {
-        if (ro.y < u_slabBottom || ro.y > u_slabTop) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); cloudDistance = NO_CLOUD; return; }
+        if (ro.y < u_slabBottom || ro.y > u_slabTop) slab = false;
     } else {
         float ta = (u_slabBottom - ro.y) / rd.y;
         float tb = (u_slabTop - ro.y) / rd.y;
         tNear = max(tNear, min(ta, tb));
         tFar = min(tFar, max(ta, tb));
     }
-    if (tNear >= tFar) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); cloudDistance = NO_CLOUD; return; }
-    if (tLimit <= tNear) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); cloudDistance = OCCLUDED; return; }
+    if (tNear >= tFar) slab = false;
+    bool occluded = slab && tLimit <= tNear;
+    if (occluded) slab = false;
     tFar = min(tFar, tLimit);
 
     vec3 sunMarch = normalize(vec3(u_sunDir.x, max(u_sunDir.y, MIN_SUN_Y), u_sunDir.z));
@@ -270,8 +347,9 @@ void main() {
     vec2 flatDir = rd.xz / max(length(rd.xz), 1e-4);
     vec3 ambient = mix(u_ambientClear, u_ambientColor, min(sunsetFogWeight(flatDir), 1.0));
 
-    float scale = stepScale(tNear, tFar);
-    float t = tNear + scale * stepAt(tNear) * dither(gl_FragCoord.xy);
+    float scale = slab ? stepScale(tNear, tFar) : 1.0;
+    float rayDither = dither(gl_FragCoord.xy);
+    float t = tNear + scale * stepAt(tNear) * rayDither;
     float transmittance = 1.0;
     vec3 light = vec3(0.0);
     float distanceSum = 0.0;
@@ -279,12 +357,12 @@ void main() {
 
     // Extra distance the last clear-air stride took beyond a plain step.
     float overshoot = 0.0;
-    for (int i = 0; i < MAX_STEPS && t < tFar; i++) {
+    for (int i = 0; slab && i < MAX_STEPS && t < tFar; i++) {
         float ds = scale * stepAt(t);
         vec3 p = ro + rd * t;
         float footprint = t * pixelAngle;
         bool covered;
-        CloudSite site = cloudSiteAt(p.xz);
+        CloudSite site = cloudSiteAtHeight(p.xz, p.y);
         CloudSample s = cloudBodyAt(site, p.y, footprint, true, covered);
         // A stride out of clear air landed in cloud: back up to a plain step
         // past the clear sample, or how deep a pixel enters the cloud depends
@@ -297,7 +375,7 @@ void main() {
         if (s.density > 0.0) {
             float ext = extinction(s);
             ds = min(ds, max(MAX_STEP_DEPTH / ext, MIN_STEP * 0.25));
-            float od = sunOpticalDepth(p, sunMarch, footprint);
+            float od = sunOpticalDepth(p, sunMarch, footprint, transmittance > CHEAP_LIGHT_BELOW, rayDither);
             float sun = phase.x * exp(-od) + 0.5 * phase.y * exp(-0.35 * od) + 0.25 * phase.z * exp(-0.12 * od);
             float powder = mix(1.0, 1.0 - exp(-ext * 16.0), powderAmount);
             // Skylight: the base of a cloud sees less of the sky than its top.
@@ -321,6 +399,24 @@ void main() {
         }
         overshoot = covered ? 0.0 : ds * (EMPTY_STRIDE - 1.0);
         t += ds + overshoot;
+    }
+
+    // The cirrus, behind the cumulus slab (it hangs far above it).
+    if (transmittance >= MIN_TRANSMITTANCE && ro.y < CIRRUS_Y) {
+        float tc;
+        vec4 ci = cirrusLayer(ro, rd, tLimit, across, pixelAngle, cosTheta, sunLight, ambient, haze, tc);
+        if (ci.a > 0.0) {
+            float added = transmittance * ci.a;
+            light += transmittance * ci.rgb;
+            distanceSum += added * tc;
+            opacitySum += added;
+            transmittance *= 1.0 - ci.a;
+        }
+    }
+    if (transmittance >= 1.0) {
+        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        cloudDistance = occluded ? OCCLUDED : NO_CLOUD;
+        return;
     }
 
     // Rain and snow below the cloud, between it and the eye. The scene behind
