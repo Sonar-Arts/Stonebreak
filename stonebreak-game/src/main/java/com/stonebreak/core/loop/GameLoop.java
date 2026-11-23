@@ -43,6 +43,7 @@ public final class GameLoop {
     );
 
     private final Game game;
+    private final com.stonebreak.audio.ShadeNightMusic shadeNightMusic = new com.stonebreak.audio.ShadeNightMusic();
     private final ExecutorService worldUpdateExecutor;
 
     private boolean hasInitializedMouseCaptureAfterLoading = false;
@@ -71,7 +72,9 @@ public final class GameLoop {
         // immediately on state transitions instead of lagging behind.
         com.stonebreak.audio.MusicManager musicManager = Game.getMusicManager();
         if (musicManager != null) {
-            musicManager.update(deltaTime, musicScene());
+            com.stonebreak.audio.MusicManager.Scene scene = musicScene();
+            musicManager.update(deltaTime, scene);
+            updateShadeTheme(musicManager, scene, deltaTime);
         }
         // Weather ambience likewise, so it fades out the moment a menu or battle takes over.
         boolean hearWeather = musicScene() == com.stonebreak.audio.MusicManager.Scene.NONE;
@@ -88,6 +91,25 @@ public final class GameLoop {
             return;
         }
         updateGameWorld(deltaTime);
+    }
+
+    /**
+     * The Shade's nightfall theme ({@link com.stonebreak.audio.ShadeNightMusic}): asked only during
+     * ordinary play in a real world; leaving the world arms it again.
+     */
+    private void updateShadeTheme(com.stonebreak.audio.MusicManager music,
+                                  com.stonebreak.audio.MusicManager.Scene scene, float deltaTime) {
+        if (!Game.isInGameWorld()) {
+            shadeNightMusic.reset();
+            return;
+        }
+        Player player = Game.getPlayer();
+        if (scene != com.stonebreak.audio.MusicManager.Scene.NONE || player == null || player.isDead()) {
+            return;
+        }
+        if (shadeNightMusic.update(Game.getWorld(), Game.getTimeOfDay(), player.getPosition(), deltaTime)) {
+            music.playShadeTheme();
+        }
     }
 
     /**

@@ -10,7 +10,8 @@ import java.util.Map;
 /**
  * Stonebreak's background music: the menu playlist while a menu screen is active (main menu, world
  * select/creation, multiplayer menus, settings) and the battle playlist while a Focus battle runs;
- * {@link Scene#NONE} is silence (ordinary gameplay). Playlist rules — advance on finish, a one-track
+ * {@link Scene#NONE} is silence (ordinary gameplay) apart from one-shot themes such as the Shade's
+ * nightfall theme ({@link #playShadeTheme()}). Playlist rules — advance on finish, a one-track
  * playlist loops, coming back to a scene resumes from its NEXT track — are the engine's
  * {@link MusicDirector}; this class holds the playlists.
  *
@@ -36,9 +37,19 @@ public final class MusicManager {
             new Track("music_the_deadly_dance", "/songs/battle music/The Deadly Dance.ogg")
     );
 
+    /**
+     * The Shade's nightfall theme: a one-shot (never looped, never a playlist) started by
+     * {@link #playShadeTheme()} — see {@link ShadeNightMusic} for when.
+     */
+    static final Track SHADE_THEME = new Track("music_the_shade", "/songs/biome music/The Shade.ogg");
+
+    private final SoundSystem sounds;
     private final MusicDirector<Scene> director;
+    /** A one-shot theme owns the music voice (only ever during {@link Scene#NONE}). */
+    private boolean oneShotPlaying;
 
     public MusicManager(SoundSystem soundSystem) {
+        this.sounds = soundSystem;
         this.director = new MusicDirector<>(soundSystem,
                 Map.of(Scene.MENU, MENU_PLAYLIST, Scene.BATTLE, BATTLE_PLAYLIST),
                 GameSoundLoader.MUSIC);
@@ -63,7 +74,33 @@ public final class MusicManager {
      * change of scene switches playlist immediately.
      */
     public void update(float deltaTime, Scene scene) {
+        if (oneShotPlaying) {
+            if (!sounds.isMusicPlaying()) {
+                oneShotPlaying = false; // finished on its own: it never loops
+            } else if (scene != Scene.NONE || !director.isEnabled()) {
+                sounds.stopMusic(); // a menu/battle playlist (or the setting) takes over
+                oneShotPlaying = false;
+            }
+        }
         director.update(scene == Scene.NONE ? null : scene);
+    }
+
+    /**
+     * Plays the Shade's nightfall theme once, if music is on and nothing else is playing (ordinary
+     * gameplay is otherwise silent). It plays to its end and is not repeated; a menu or battle scene
+     * cuts it off. Returns whether it started.
+     */
+    public boolean playShadeTheme() {
+        if (!director.isEnabled() || director.playingScene() != null || sounds.isMusicPlaying()) {
+            return false;
+        }
+        if (!sounds.isMusicLoaded(SHADE_THEME.name())) {
+            GameSoundLoader.MUSIC.load(sounds, SHADE_THEME);
+        }
+        if (!sounds.isMusicLoaded(SHADE_THEME.name())) return false;
+        sounds.playMusic(SHADE_THEME.name());
+        oneShotPlaying = true;
+        return true;
     }
 
     /** Loads a scene's tracks ahead of its first activation. Idempotent. */
