@@ -72,6 +72,14 @@ public class World {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(World.class);
 
+    /**
+     * Detail radius in blocks (Stonebreak VRAM pass 2026-11-22): within it relief blocks ({@code BlockFlags.DETAIL}:
+     * ore nuggets) mesh as their full model, beyond it as plain cube faces (16 B/face instead of ~20 KB per
+     * exposed ore face). The nuggets stick out at most 0.11 blocks, ~1-2 px at 48 blocks. Negative = models
+     * everywhere (the pre-2026-11-22 look). {@code -Dstonebreak.detailRadius}.
+     */
+    static final int DETAIL_RADIUS = Integer.getInteger("stonebreak.detailRadius", 48);
+
     /** How a world is built. */
     public enum Mode {
         /** Authoritative: native generator stream (+ store when persisted). */
@@ -440,6 +448,10 @@ public class World {
                 });
                 StonebreakBlockTable.apply(v);
             }
+        }
+        if (s != null && buildMeshes) {
+            // Relief blocks (ore nuggets, BlockFlags.DETAIL) draw their model only near the camera.
+            s.setDetailRadius(DETAIL_RADIUS);
         }
         this.voxels = v;
         this.stream = s;

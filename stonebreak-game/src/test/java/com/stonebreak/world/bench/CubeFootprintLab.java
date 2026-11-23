@@ -215,12 +215,14 @@ public final class CubeFootprintLab {
             return;
         }
         RegionSims s = sims[layer];
+        // Stamp regions are quad-indexed since 2026-11-22 (MmsChunkRegion.quadIndexed: no index arena), like the
+        // pulled layers: the sim carries vertices only.
         MmsArenaSim sim = s.sims.computeIfAbsent(key, k -> layer == 2
-            ? new MmsArenaSim(policies[layer], MmsVertexFormat.COMPACT20.stride(), Integer.BYTES,
+            ? new MmsArenaSim(policies[layer], MmsVertexFormat.COMPACT20.stride(), 0,
                 policies[layer].sparseGrowth(), 65536)
             : new MmsArenaSim(policies[layer], MmsVertexFormat.QUAD16.stride(), 0,
                 policies[layer].sparseGrowth(), 65536));
-        s.handles.put(pos, sim.upload(vertices, indices));
+        s.handles.put(pos, sim.upload(vertices, layer == 2 ? 0 : indices));
     }
 
     private static Map<String, Object> cubeRam(World world) {

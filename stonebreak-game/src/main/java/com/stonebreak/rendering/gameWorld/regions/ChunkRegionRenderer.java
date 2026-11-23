@@ -240,6 +240,11 @@ public final class ChunkRegionRenderer {
                 mesh.quads(StreamMesh.TRANSLUCENT), n, box[0], box[1], box[2], box[3], box[4], box[5]);
             int sv = mesh.stampVertexCount(), si = mesh.stampIndexCount();
             if (sv > 0 && si > 0) {
+                if (si != sv / 4 * 6 || (sv & 3) != 0) {
+                    // The quad-indexed stamp region relies on cv_gpu_mesh's 4-vertex quads (6 indices each).
+                    throw new IllegalStateException("stamp mesh is not whole quads: " + sv + " vertices, "
+                        + si + " indices");
+                }
                 MemorySegment vertices = mesh.stampVertices();
                 MemorySegment indices = mesh.stampIndices();
                 draw.stamp = region(LAYER_STAMP, key).uploadLocal(vertices, sv, indices, si,
@@ -280,8 +285,11 @@ public final class ChunkRegionRenderer {
         return regions[layer].computeIfAbsent(key, k -> switch (layer) {
             case LAYER_WATER -> new MmsChunkRegion(k, MmsVertexFormat.WATERQUAD16,
                 VramPlans.arena(VramPlans.POOL_CHUNK_WATER));
-            case LAYER_STAMP -> new MmsChunkRegion(k, MmsVertexFormat.COMPACT20,
-                VramPlans.arena(VramPlans.POOL_CHUNK_STAMP), Integer.BYTES);
+            // Quad-indexed (2026-11-22): stamp quads are 4 vertices drawn (0,1,2) (0,2,3), so the region draws
+            // them through the shared stamp-quad element buffer and keeps no index arena (80 instead of 104
+            // bytes per stamp quad).
+            case LAYER_STAMP -> MmsChunkRegion.quadIndexed(k, MmsVertexFormat.COMPACT20,
+                VramPlans.arena(VramPlans.POOL_CHUNK_STAMP));
             default -> new MmsChunkRegion(k, MmsVertexFormat.QUAD16,
                 VramPlans.arena(VramPlans.POOL_CHUNK_MESH));
         });

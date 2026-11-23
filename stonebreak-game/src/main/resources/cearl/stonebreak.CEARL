@@ -90,7 +90,7 @@ plan stonebreak
         priority 95
         arena
             vertex 256 KiB         ~ COMPACT20 stamp/model/snow vertices; most regions hold a few flowers/
-            index 96 KiB           ~ cacti only (smoke run: ~1 stamp mesh per region) - growth covers forests; u32
+            index 96 KiB           ~ unused since 2026-11-22: stamp regions are quad-indexed (shared stamp-quad EBO)
         end
     end
 

@@ -30,8 +30,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /**
  * Every shipped block the client's block table flags as a cube gets cube face textures. A block the native packer
  * draws as a cube without {@code setBlockFaces} packs texture layer = its id: limestone (id 44, two stamp variants
- * through its redundant "Base" state, so not a stamp cube, but occluding every face) was left to the headless rule
- * and drew layer 44 - pine planks.
+ * through its redundant "Base" state) was once left to the headless rule and drew layer 44 - pine planks. Since the
+ * 2026-11-22 VRAM pass limestone is a stamp cube (its "Base" variant has the default geometry), and ores with
+ * protruding nuggets are DETAIL cubes: cube faces + their full model, drawn only near the camera.
  */
 class CubeRenderAssetsCubeVerdictTest {
 
@@ -70,7 +71,8 @@ class CubeRenderAssetsCubeVerdictTest {
         StampVariants.registerAll(cache, stamped.keySet());
         SboCubeFaces cubes = new SboCubeFaces(new StampEmitter(cache, (b, x, y, z, f, c) -> true));
 
-        short[] flags = StonebreakBlockTable.flags(CubeRenderAssets.cubeOverride(cubes));
+        short[] flags = StonebreakBlockTable.flags(CubeRenderAssets.cubeOverride(cubes),
+            CubeRenderAssets.detailBlocks(cubes));
         List<String> faceless = new ArrayList<>();
         for (BlockType type : stamped.keySet()) {
             if (type == BlockType.AIR || type == BlockType.WATER || cache.get(type) == null) {
@@ -85,10 +87,31 @@ class CubeRenderAssetsCubeVerdictTest {
         }
         assertEquals(List.of(), faceless, "flagged cubes without face textures (would draw texture layer = id)");
 
-        assertFalse(cubes.isCube(BlockType.LIMESTONE), "limestone's extra state keeps it off the cube path");
-        assertTrue(cubes.isModel(BlockType.LIMESTONE));
-        assertEquals(0, flags[BlockType.LIMESTONE.getId()] & BlockFlags.CUBE, "limestone draws from its model");
+        assertTrue(cubes.isCube(BlockType.LIMESTONE), "limestone's redundant 'Base' state is the same cube");
+        assertFalse(cubes.isModel(BlockType.LIMESTONE));
+        assertTrue((flags[BlockType.LIMESTONE.getId()] & BlockFlags.CUBE) != 0, "limestone takes the cube path");
         assertTrue((flags[BlockType.LIMESTONE.getId()] & BlockFlags.OPAQUE) != 0, "and still hides its neighbours");
+        assertEquals(0, flags[BlockType.LIMESTONE.getId()] & BlockFlags.DETAIL, "no relief on limestone");
         assertTrue(cubes.isCube(BlockType.STONE), "a plain cube stays on the cube path");
+        assertFalse(cubes.isDetailCube(BlockType.STONE));
+
+        // Ores: protruding nuggets on an opaque cube = DETAIL cubes (faces far away, the nugget model near).
+        List<String> ores = new ArrayList<>();
+        for (BlockType type : stamped.keySet()) {
+            if (!type.name().endsWith("_ORE") || cache.get(type) == null) continue;
+            ores.add(type.name());
+            int f = flags[type.getId()];
+            assertTrue(cubes.isCube(type) && cubes.isDetailCube(type), type + " is a detail cube");
+            assertTrue((f & BlockFlags.CUBE) != 0 && (f & BlockFlags.DETAIL) != 0 && (f & BlockFlags.OPAQUE) != 0,
+                type + " flags CUBE | DETAIL | OPAQUE");
+            assertTrue(cache.get(type).hasProtrusions(), type + " keeps its nugget model for the detail mode");
+        }
+        assertFalse(ores.isEmpty(), "the shipped ores were checked");
+        // No transparent or per-cell block becomes a detail cube.
+        for (BlockType type : stamped.keySet()) {
+            if (cubes.isDetailCube(type)) {
+                assertFalse(type.isTransparent() || cubes.isPerCellCube(type), type + " must be an opaque plain cube");
+            }
+        }
     }
 }

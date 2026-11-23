@@ -50,6 +50,20 @@ class StonebreakBlockTableTest {
     }
 
     @Test
+    void detailFlagOnlyMarksOpaqueCubes() {
+        boolean[] detail = new boolean[StonebreakBlockTable.maxId() + 1];
+        detail[BlockType.STONE.getId()] = true;   // opaque cube: gets DETAIL
+        detail[BlockType.LEAVES.getId()] = true;  // transparent cube: never DETAIL
+        detail[BlockType.ROSE.getId()] = true;    // host geometry: never DETAIL
+        short[] flags = StonebreakBlockTable.flags(null, detail);
+        int stone = flags[BlockType.STONE.getId()];
+        assertTrue((stone & BlockFlags.DETAIL) != 0 && (stone & BlockFlags.CUBE) != 0 && (stone & BlockFlags.OPAQUE) != 0);
+        assertEquals(0, flags[BlockType.LEAVES.getId()] & BlockFlags.DETAIL);
+        assertEquals(0, flags[BlockType.ROSE.getId()] & BlockFlags.DETAIL);
+        assertEquals(0, StonebreakBlockTable.flags()[BlockType.STONE.getId()] & BlockFlags.DETAIL, "headless: no DETAIL");
+    }
+
+    @Test
     void appliesToANativeWorld() {
         try (CubeWorld w = CubeWorld.create(-384, 640, BlockType.AIR.getId(), null)) {
             StonebreakBlockTable.apply(w);

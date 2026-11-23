@@ -48,7 +48,7 @@ class CearlBootstrapTest {
         assertEquals(0.4, water.trimFraction(), 1e-9);
         VramArenaPolicy stamp = VramPlans.arena(VramPlans.POOL_CHUNK_STAMP);
         assertEquals(256L * 1024, stamp.vertexInitialBytes());
-        assertEquals(96L * 1024, stamp.indexInitialBytes()); // u32 indices of native stamp meshes
+        assertEquals(96L * 1024, stamp.indexInitialBytes()); // parsed, unused: stamp regions are quad-indexed
         assertEquals(1.5, chunk.growthFactor());
         assertEquals(0.125, chunk.growthReserve());
         assertEquals(0.4, chunk.trimFraction(), 1e-9);

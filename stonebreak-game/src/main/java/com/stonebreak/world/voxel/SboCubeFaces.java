@@ -49,6 +49,12 @@ public final class SboCubeFaces {
     private final boolean[][] cubeMasks;
     /** Per block id: the block has a baked stamp (drawn as a cube or from its model, never as the id's layer). */
     private final boolean[] stamped;
+    /**
+     * Per block id: an opaque unit cube whose stamp ALSO carries protruding relief (ore nuggets). It takes the
+     * cube path (its flush faces) and keeps its full model as the native DETAIL model, drawn only near the
+     * camera ({@code CV_BLOCK_DETAIL}, {@link #isDetailCube}).
+     */
+    private final boolean[] detail;
 
     public SboCubeFaces(StampEmitter emitter) {
         int maxId = 0;
@@ -62,6 +68,7 @@ public final class SboCubeFaces {
         shaped = new boolean[maxId + 1];
         cubeMasks = new boolean[maxId + 1][];
         stamped = new boolean[maxId + 1];
+        detail = new boolean[maxId + 1];
         for (BlockType type : BlockType.values()) {
             if (!emitter.hasBlock(type)) {
                 continue;
@@ -88,17 +95,24 @@ public final class SboCubeFaces {
         com.stonebreak.blocks.multipart.MultipartShape multipart =
             com.stonebreak.blocks.multipart.MultipartRegistry.of(type);
         // A multipart block's states are its parts, not alternatives to the default model, so
-        // only its default stamp decides whether it is a cube.
-        if (multipart == null && emitter.getCache().variantCount(type) != 1) {
+        // only its default stamp decides whether it is a cube. Other blocks need one shape: a single
+        // stamp, or state variants that are all the default geometry again (limestone's "Base").
+        if (multipart == null && emitter.getCache().variantCount(type) != 1
+                && !variantsMatchDefault(emitter, type)) {
             return false;
         }
         // Translucent blocks (per-face opacity overrides) and snow layers
         // (per-cell height) stay per-cell but still pull as quads.
         boolean needsPerCell = emitter.isTranslucent(type) || type == BlockType.SNOW;
         BlockStamp stamp = emitter.getCache().get(type);
-        if (stamp == null || stamp.faces() == null || stamp.faces().length != 6
-                || stamp.hasProtrusions()) {
-            return false; // protruding detail (ore nuggets) only the stamp emitter draws
+        if (stamp == null || stamp.faces() == null || stamp.faces().length != 6) {
+            return false;
+        }
+        // Protruding relief (ore nuggets) on an otherwise clean opaque cube: a DETAIL cube (cube faces far
+        // away, the full model near the camera). Anything else with protrusions stays a model.
+        boolean relief = stamp.hasProtrusions();
+        if (relief && (multipart != null || needsPerCell || type.isTransparent())) {
+            return false;
         }
         float[][] uv = new float[6][8];
         float[] layer = new float[6];
@@ -135,6 +149,53 @@ public final class SboCubeFaces {
             perCell[id] = true;
         } else {
             cube[id] = true;
+            detail[id] = relief;
+        }
+        return true;
+    }
+
+    /** True when every registered state variant of {@code type} has the default stamp's geometry. */
+    private static boolean variantsMatchDefault(StampEmitter emitter, BlockType type) {
+        BlockStamp base = emitter.getCache().get(type);
+        if (base == null) {
+            return false;
+        }
+        for (BlockStamp variant : emitter.getCache().variants(type).values()) {
+            if (variant != base && !sameGeometry(variant, base)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static boolean sameGeometry(BlockStamp a, BlockStamp b) {
+        return sameFaces(a.faces(), b.faces()) && sameFaces(a.interior(), b.interior())
+            && java.util.Arrays.equals(a.occludesFace(), b.occludesFace())
+            && sameProtrusions(a.protruding(), b.protruding());
+    }
+
+    private static boolean sameProtrusions(FaceStamp[][] a, FaceStamp[][] b) {
+        if (a == null || b == null) return a == b;
+        if (a.length != b.length) return false;
+        for (int i = 0; i < a.length; i++) {
+            if (!sameFaces(a[i], b[i])) return false;
+        }
+        return true;
+    }
+
+    private static boolean sameFaces(FaceStamp[] a, FaceStamp[] b) {
+        if (a == null || b == null) return a == b;
+        if (a.length != b.length) return false;
+        for (int i = 0; i < a.length; i++) {
+            FaceStamp x = a[i], y = b[i];
+            if (x == y) continue;
+            if (x == null || y == null || x.vertexCount() != y.vertexCount()
+                    || !java.util.Arrays.equals(x.positions(), y.positions())
+                    || !java.util.Arrays.equals(x.normals(), y.normals())
+                    || !java.util.Arrays.equals(x.atlasUVs(), y.atlasUVs())
+                    || !java.util.Arrays.equals(x.layers(), y.layers())) {
+                return false;
+            }
         }
         return true;
     }
@@ -211,6 +272,15 @@ public final class SboCubeFaces {
     public boolean hasCubeMasks(BlockType type) {
         int id = type.getId();
         return id < cubeMasks.length && cubeMasks[id] != null;
+    }
+
+    /**
+     * True for a cube block that also keeps its full stamp model as a native DETAIL model (protruding relief:
+     * ore nuggets): cube faces far from the camera, the model near it. A subset of {@link #isCube}.
+     */
+    public boolean isDetailCube(BlockType type) {
+        int id = type.getId();
+        return id < detail.length && detail[id];
     }
 
     /** True when this SBO block is an exact unit cube and may take the cube path. */

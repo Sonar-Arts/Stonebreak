@@ -142,12 +142,12 @@ public final class CubeRenderAssets {
         }
         SboCubeFaces c = cubes;
         if (a == null || c == null || !a.installed) {
-            StonebreakBlockTable.apply(world, cubeOverride());
+            StonebreakBlockTable.apply(world, cubeOverride(), detailBlocks());
             return;
         }
         synchronized (a) {
             try {
-                StonebreakBlockTable.apply(a.world, cubeOverride());
+                StonebreakBlockTable.apply(a.world, cubeOverride(), detailBlocks());
                 for (BlockType type : BlockType.values()) {
                     if (type == BlockType.AIR || type == BlockType.WATER) continue;
                     if (c.isCube(type) || (c.isPerCellCube(type) && type != BlockType.SNOW)) {
@@ -180,6 +180,25 @@ public final class CubeRenderAssets {
         return c == null ? null : cubeOverride(c);
     }
 
+    /**
+     * The cube blocks that also keep their relief model (ore nuggets) as a native DETAIL model, indexed by id;
+     * null before the emitter exists. See {@link SboCubeFaces#isDetailCube}.
+     */
+    public static boolean[] detailBlocks() {
+        SboCubeFaces c = cubes;
+        return c == null ? null : detailBlocks(c);
+    }
+
+    static boolean[] detailBlocks(SboCubeFaces c) {
+        boolean[] out = new boolean[StonebreakBlockTable.maxId() + 1];
+        for (BlockType type : BlockType.values()) {
+            if (type != BlockType.AIR && type != BlockType.WATER && c.isDetailCube(type)) {
+                out[type.getId()] = true;
+            }
+        }
+        return out;
+    }
+
     /** {@link #cubeOverride()} for the verdicts {@code c}. */
     static Boolean[] cubeOverride(SboCubeFaces c) {
         Boolean[] out = new Boolean[StonebreakBlockTable.maxId() + 1];
@@ -205,7 +224,7 @@ public final class CubeRenderAssets {
         }
         synchronized (a) {
             try {
-                StonebreakBlockTable.apply(a.world, cubeOverride());
+                StonebreakBlockTable.apply(a.world, cubeOverride(), detailBlocks());
                 StampCache cache = e.getCache();
                 int faces = 0, models = 0;
                 for (BlockType type : BlockType.values()) {
@@ -213,6 +232,15 @@ public final class CubeRenderAssets {
                     if (c.isCube(type) || (c.isPerCellCube(type) && type != BlockType.SNOW)) {
                         a.world.setBlockFaces(type.getId(), faceTextures(c, type));
                         faces++;
+                        BlockStamp relief = c.isDetailCube(type) ? cache.get(type) : null;
+                        if (relief != null) {
+                            // DETAIL: the full model (flush faces + nuggets) near the camera, the faces above beyond.
+                            int model = a.nextModel++;
+                            if (define(a.world, model, quads(relief, type, false), type + " [detail]")) {
+                                a.world.bindBlockModel(type.getId(), -1, 0, model);
+                                models++;
+                            }
+                        }
                     } else if (type == BlockType.SNOW) {
                         BlockStamp stamp = cache.get(type);
                         if (stamp != null) {

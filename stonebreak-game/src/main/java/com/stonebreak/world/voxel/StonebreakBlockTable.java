@@ -61,6 +61,14 @@ public final class StonebreakBlockTable {
 
     /** The cv flags of one block, with {@code unitCube} deciding the cube/host-geometry split. */
     public static int flagsOf(BlockType type, boolean unitCube) {
+        return flagsOf(type, unitCube, false);
+    }
+
+    /**
+     * The cv flags of one block; {@code detail} (an opaque unit cube that also binds its relief model, e.g. an
+     * ore with nuggets) adds {@link BlockFlags#DETAIL}: the model near the camera, the cube faces beyond.
+     */
+    public static int flagsOf(BlockType type, boolean unitCube, boolean detail) {
         if (type == null || type == BlockType.AIR || type == BlockType.WATER) {
             return 0;
         }
@@ -75,6 +83,9 @@ public final class StonebreakBlockTable {
                 }
             } else {
                 flags |= BlockFlags.OPAQUE | BlockFlags.VIS_OPAQUE;
+                if (detail) {
+                    flags |= BlockFlags.DETAIL;
+                }
             }
         } else {
             flags |= BlockFlags.HOST_GEOMETRY;
@@ -95,12 +106,21 @@ public final class StonebreakBlockTable {
      * unit-cube decision where it holds a non-null value.
      */
     public static short[] flags(Boolean[] cubeOverride) {
+        return flags(cubeOverride, null);
+    }
+
+    /**
+     * The whole table with the stamp cache's verdicts: {@code cubeOverride} as above, {@code detail} (indexed by
+     * id, may be null or shorter) marks the cube blocks that also bind a relief model ({@link BlockFlags#DETAIL}).
+     */
+    public static short[] flags(Boolean[] cubeOverride, boolean[] detail) {
         short[] out = new short[maxId() + 1];
         for (BlockType type : BlockType.values()) {
             int id = type.getId();
             boolean cube = cubeOverride != null && id < cubeOverride.length && cubeOverride[id] != null
                 ? cubeOverride[id] : isUnitCube(type);
-            out[id] = (short) flagsOf(type, cube);
+            boolean relief = detail != null && id < detail.length && detail[id];
+            out[id] = (short) flagsOf(type, cube, relief);
         }
         return out;
     }
@@ -114,8 +134,13 @@ public final class StonebreakBlockTable {
     }
 
     public static void apply(CubeWorld world, Boolean[] cubeOverride) {
+        apply(world, cubeOverride, null);
+    }
+
+    /** {@link #apply(CubeWorld, Boolean[])} with the relief (DETAIL) blocks of {@link #flags(Boolean[], boolean[])}. */
+    public static void apply(CubeWorld world, Boolean[] cubeOverride, boolean[] detail) {
         VoxelLayers.define(world);
-        world.setBlockTable(flags(cubeOverride));
+        world.setBlockTable(flags(cubeOverride, detail));
         world.setFluid(VoxelLayers.WATER, BlockType.WATER.getId(), VoxelLayers.waterSurfaceByLevel());
         applyFaceRules(world);
     }
