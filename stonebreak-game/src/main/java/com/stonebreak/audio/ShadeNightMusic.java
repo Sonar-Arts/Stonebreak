@@ -3,6 +3,7 @@ package com.stonebreak.audio;
 import com.stonebreak.world.ShadeNight;
 import com.stonebreak.world.TimeOfDay;
 import com.stonebreak.world.World;
+import com.stonebreak.world.generation.TerrainClosedException;
 import com.stonebreak.world.generation.TerrainGenerator;
 import com.stonebreak.world.generation.biomes.BiomeType;
 import org.joml.Vector3dc;
@@ -67,14 +68,23 @@ public final class ShadeNightMusic {
         return true;
     }
 
-    /** Whether {@code feet} stands in the Shade biome, at (or within a step of) the sky surface. */
+    /**
+     * Whether {@code feet} stands in the Shade biome, at (or within a step of) the sky surface. False while the
+     * world's terrain is shutting down: leaving a world closes the generator (a client view borrows the
+     * integrated server's, which closes first) a frame or more before the game stops counting as in a world,
+     * and this runs on the main thread, where an escaping {@link TerrainClosedException} ends the game.
+     */
     static boolean onShadeSurface(World world, Vector3dc feet) {
         if (world == null || feet == null) return false;
-        TerrainGenerator terrain = world.terrain();
-        if (terrain == null) return false;
-        long x = (long) Math.floor(feet.x());
-        long z = (long) Math.floor(feet.z());
-        if (terrain.getBiomeAt((int) x, (int) z) != BiomeType.SHADE) return false;
-        return feet.y() >= world.surfaceY(x, z) - SURFACE_TOLERANCE;
+        try {
+            TerrainGenerator terrain = world.terrain();
+            if (terrain == null) return false;
+            long x = (long) Math.floor(feet.x());
+            long z = (long) Math.floor(feet.z());
+            if (terrain.getBiomeAt((int) x, (int) z) != BiomeType.SHADE) return false;
+            return feet.y() >= world.surfaceY(x, z) - SURFACE_TOLERANCE;
+        } catch (TerrainClosedException e) {
+            return false; // teardown: not on the Shade (the theme stays armed)
+        }
     }
 }

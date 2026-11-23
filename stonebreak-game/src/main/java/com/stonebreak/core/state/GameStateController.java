@@ -106,6 +106,20 @@ public final class GameStateController {
             game.getLoadingScreen().dismiss();
         }
 
+        // Leaving gameplay for any screen (inventory, character sheet, workbench, furnace, chest, recipe
+        // book, pause...): cancel the block break in progress and drop the held buttons, so a break can
+        // neither finish behind the menu nor resume from a button the menu's document swallowed (#454).
+        // BlockBreaker also cancels on its own once the world actions stop asking for it.
+        if (stateChanged && previousGameState == GameState.PLAYING) {
+            com.stonebreak.player.Player player = Game.getPlayer();
+            if (player != null) {
+                player.stopBreakingBlock();
+            }
+            if (game.getInputHandler() != null) {
+                game.getInputHandler().clearMouseButtonStates();
+            }
+        }
+
         // Entering gameplay from any menu/UI state: drop residual mouse button
         // state so the click that closed the menu (or a release swallowed by a
         // menu-routed callback) can't trigger attacks/block breaking on its own.

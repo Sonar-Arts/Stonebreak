@@ -112,8 +112,9 @@ void rasterRavine(CarveCtx& ctx, const RavineWalk& w);
 void buildFormations(Generator& g, int64_t layerSeed, bool mega, int64_t X0, int64_t Z0,
                      const MaskSet& carve, MaskSet& formations);
 
-/* Cavern origins for limestone zones (CavernCarver.computeCavernOrigin, top layer). */
-bool cavernOrigin(Generator& g, int64_t seed, bool mega, int64_t cx16, int64_t cz16, float out[3]);
+/* Cavern origins for limestone zones (CavernCarver.computeCavernOrigin) of one carving layer: `seed` = the
+ * layer's seed, `drop` = its frame offset (Generator::layerDrop; 0 = the top carvers). out[1] is WORLD y. */
+bool cavernOrigin(Generator& g, int64_t seed, int32_t drop, bool mega, int64_t cx16, int64_t cz16, float out[3]);
 
 /* PerlinWormCarver.nearestWormOrigin (sinkhole aim). */
 bool nearestWormOrigin(Generator& g, const LayerSeeds& s, int64_t cx16, int64_t cz16, int radius,

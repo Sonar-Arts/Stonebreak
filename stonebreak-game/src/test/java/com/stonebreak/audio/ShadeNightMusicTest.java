@@ -68,4 +68,22 @@ class ShadeNightMusicTest {
         rule.reset();
         assertTrue(rule.shouldStart(1f, STEP, () -> true), "a fresh world at night");
     }
+
+    @Test
+    void aClosingTerrainIsNotTheShadeAndNeverThrows() {
+        // Leaving a world: the generator closes before the game stops counting as in a world (crash 2026-11-22).
+        com.stonebreak.world.World world = org.mockito.Mockito.mock(com.stonebreak.world.World.class);
+        org.mockito.Mockito.when(world.terrain()).thenThrow(
+            new com.stonebreak.world.generation.TerrainClosedException("generator closed"));
+        assertFalse(ShadeNightMusic.onShadeSurface(world, new org.joml.Vector3d(1, 70, 1)));
+
+        com.stonebreak.world.generation.NativeTerrain terrain =
+            org.mockito.Mockito.mock(com.stonebreak.world.generation.NativeTerrain.class);
+        org.mockito.Mockito.when(terrain.getBiomeAt(org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt()))
+            .thenThrow(new com.stonebreak.world.generation.TerrainClosedException("generator closed"));
+        com.stonebreak.world.World open = org.mockito.Mockito.mock(com.stonebreak.world.World.class);
+        org.mockito.Mockito.when(open.terrain()).thenReturn(terrain);
+        assertFalse(ShadeNightMusic.onShadeSurface(open, new org.joml.Vector3d(1, 70, 1)));
+    }
 }

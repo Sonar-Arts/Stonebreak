@@ -1506,10 +1506,12 @@ void buildFormations(Generator& g, int64_t layerSeed, bool mega, int64_t X0, int
     }
 }
 
-bool cavernOrigin(Generator& g, int64_t seed, bool mega, int64_t cx16, int64_t cz16, float out[3]) {
+bool cavernOrigin(Generator& g, int64_t seed, int32_t drop, bool mega, int64_t cx16, int64_t cz16, float out[3]) {
     const CavernParams& p = mega ? MEGA : CAVERN;
     if (!hasCavern(p, seed, cx16, cz16)) return false;
-    cavernOriginOf(p, g, seed, static_cast<int32_t>(g.cfg.minY) + 6, cx16, cz16, out);
+    /* exactly carveOneCavern's origin in the layer's frame (CarveCtx::yFloor), then frame -> world y */
+    cavernOriginOf(p, g, seed, static_cast<int32_t>(g.cfg.minY) + 6 + drop, cx16, cz16, out);
+    out[1] -= static_cast<float>(drop);
     return true;
 }
 

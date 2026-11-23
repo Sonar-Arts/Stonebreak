@@ -569,21 +569,29 @@ struct CavernZone {
     int kind;
 };
 
+/* The cavern zones near a cube: every carving layer's caverns (the top carvers and, with SBW_FLAG_DEEP_LAYERS, each
+ * DeepCaveLayer, which carves its own caverns + formation pillars 100 * L blocks down). Before 2026-11-22 only the top
+ * layer was listed, so deep caverns kept their pillars as bare stone and never grew stalagmites or limestone. */
 void cavernZones(Generator& g, int64_t X0, int64_t Z0, std::vector<CavernZone>& zones) {
-    for (int kind = 1; kind <= 2; kind++) {
-        const float radius = kind == 1 ? CAVERN_ZONE_RADIUS : MEGA_ZONE_RADIUS;
-        const auto minX = static_cast<float>(X0) - radius, maxX = static_cast<float>(X0 + CE) + radius;
-        const auto minZ = static_cast<float>(Z0) - radius, maxZ = static_cast<float>(Z0 + CE) + radius;
-        const int64_t c0 = floorDiv64(X0 - static_cast<int64_t>(radius) - CHUNK, CHUNK);
-        const int64_t c1 = floorDiv64(X0 + CE + static_cast<int64_t>(radius) + CHUNK, CHUNK);
-        const int64_t d0 = floorDiv64(Z0 - static_cast<int64_t>(radius) - CHUNK, CHUNK);
-        const int64_t d1 = floorDiv64(Z0 + CE + static_cast<int64_t>(radius) + CHUNK, CHUNK);
-        for (int64_t scx = c0; scx <= c1; scx++) {
-            for (int64_t scz = d0; scz <= d1; scz++) {
-                float o[3];
-                if (!cavernOrigin(g, g.cfg.seed, kind == 2, scx, scz, o)) continue;
-                if (o[0] < minX || o[0] > maxX || o[2] < minZ || o[2] > maxZ) continue;
-                zones.push_back({o[0], o[1], o[2], kind});
+    const int layers = (g.cfg.flags & SBW_FLAG_DEEP_LAYERS) != 0 ? Generator::CARVE_LAYERS : 1;
+    for (int layer = 0; layer < layers; layer++) {
+        const int64_t seed = g.layerSeed[layer];
+        const int32_t drop = g.layerDrop[layer];
+        for (int kind = 1; kind <= 2; kind++) {
+            const float radius = kind == 1 ? CAVERN_ZONE_RADIUS : MEGA_ZONE_RADIUS;
+            const auto minX = static_cast<float>(X0) - radius, maxX = static_cast<float>(X0 + CE) + radius;
+            const auto minZ = static_cast<float>(Z0) - radius, maxZ = static_cast<float>(Z0 + CE) + radius;
+            const int64_t c0 = floorDiv64(X0 - static_cast<int64_t>(radius) - CHUNK, CHUNK);
+            const int64_t c1 = floorDiv64(X0 + CE + static_cast<int64_t>(radius) + CHUNK, CHUNK);
+            const int64_t d0 = floorDiv64(Z0 - static_cast<int64_t>(radius) - CHUNK, CHUNK);
+            const int64_t d1 = floorDiv64(Z0 + CE + static_cast<int64_t>(radius) + CHUNK, CHUNK);
+            for (int64_t scx = c0; scx <= c1; scx++) {
+                for (int64_t scz = d0; scz <= d1; scz++) {
+                    float o[3];
+                    if (!cavernOrigin(g, seed, drop, kind == 2, scx, scz, o)) continue;
+                    if (o[0] < minX || o[0] > maxX || o[2] < minZ || o[2] > maxZ) continue;
+                    zones.push_back({o[0], o[1], o[2], kind});
+                }
             }
         }
     }

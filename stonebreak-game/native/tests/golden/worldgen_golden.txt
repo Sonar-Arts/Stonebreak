@@ -8,6 +8,8 @@
 # entries; with SBW_BLUEBERRY_BUSH withheld (id 0) every entry is byte-identical to the previous capture
 # 2026-11-21 (SBW ABI 7): sbw_probe_cell_trees packs the tree kind in 3 bits (trunk << 19) - the 7 */cells entries; with
 # the old packing every entry is byte-identical
+# 2026-11-22: cavern zones list every carving layer's caverns (deep layers' too), so deep caverns grow stalagmites and
+# limestone; re-captured the 40 */cubes entries whose columns reach a deep cavern zone, every other entry byte-identical
 s1-h/carve/0/0 b91b4ee2eb7e7b0e
 s1-h/carve/0/1 a6a0a9aee81efd87
 s1-h/carve/0/2 60a1f2247c4ed895
@@ -18,7 +20,7 @@ s1-h/carve/2/0 78e17ca264767a4c
 s1-h/carve/2/1 fcd1dfa2c1e74218
 s1-h/carve/2/2 ae29fe7ba09c4bf4
 s1-h/cells/0/0 8425c05b6ad5060e
-s1-h/cubes/0/0 00f204dd698b98a8
+s1-h/cubes/0/0 844fc88a4b31a20b
 s1-h/cubes/0/1 171aa90980f938dd
 s1-h/cubes/0/2 aff410e016c406a7
 s1-h/cubes/1/0 0261e3a97dca7893
@@ -76,7 +78,7 @@ s1-q-shape2/carve/2/0 8b0745594b8697cc
 s1-q-shape2/carve/2/1 d1e783f12f68943a
 s1-q-shape2/carve/2/2 68d16922e559b966
 s1-q-shape2/cells/0/0 d8f135463d3fe540
-s1-q-shape2/cubes/0/0 5addb72ae191d807
+s1-q-shape2/cubes/0/0 00d1e84f6d80b7ea
 s1-q-shape2/cubes/0/1 64cbdfcce420b9a3
 s1-q-shape2/cubes/0/2 3c21cd663e382647
 s1-q-shape2/cubes/1/0 2b9e21a9c329ca12
@@ -138,8 +140,8 @@ s1-q/carve/2/0 2c854732b766c60a
 s1-q/carve/2/1 573999246fcb75df
 s1-q/carve/2/2 f3e6b88c2d2d1853
 s1-q/cells/0/0 eac06121fc80d2a0
-s1-q/cubes/0/0 1ef6a513e2c9f9e1
-s1-q/cubes/0/1 e0c2a55ef00673ce
+s1-q/cubes/0/0 52f829fa5bf2693b
+s1-q/cubes/0/1 78022729e5cca700
 s1-q/cubes/0/2 82b16f4f40960ea9
 s1-q/cubes/1/0 f75c791b9e9673b7
 s1-q/cubes/1/1 ce7483d419561441
@@ -195,10 +197,10 @@ s20261117-h/carve/-199/131 4d5534e83ebe146f
 s20261117-h/carve/-200/130 4080437cb993fcbe
 s20261117-h/carve/-200/131 1bd60f955498df22
 s20261117-h/cells/0/0 a0d4b1adbd2ed327
-s20261117-h/cubes/-199/130 704d92e5c32bdc80
-s20261117-h/cubes/-199/131 0fffdc538bee580d
+s20261117-h/cubes/-199/130 3934518dedf5b5db
+s20261117-h/cubes/-199/131 fd87106832699d54
 s20261117-h/cubes/-200/130 6d70141494a8f6ce
-s20261117-h/cubes/-200/131 68f7cff845f43020
+s20261117-h/cubes/-200/131 1543d8ac9b6e4fca
 s20261117-h/popret/0/2 0000000000000000
 s20261117-h/popret/0/3 0000000000000000
 s20261117-h/popret/0/4 0000000000000000
@@ -230,15 +232,15 @@ s31337-q-tiny/carve/-3/7 14ac55da628673b7
 s31337-q-tiny/carve/-3/8 eda3aa40d15d0558
 s31337-q-tiny/carve/-3/9 bc595c00b8ffbd07
 s31337-q-tiny/cells/0/0 b50368d38092ec82
-s31337-q-tiny/cubes/-1/7 3bdce06c89f33085
-s31337-q-tiny/cubes/-1/8 5f8fe5aa9488d496
-s31337-q-tiny/cubes/-1/9 cbd75710f7faeddc
-s31337-q-tiny/cubes/-2/7 0b5e38e271e12089
-s31337-q-tiny/cubes/-2/8 7a860aad72faa64f
-s31337-q-tiny/cubes/-2/9 b95e9bd493b7f74a
-s31337-q-tiny/cubes/-3/7 28f896cf24d44907
-s31337-q-tiny/cubes/-3/8 c07839b8d199cd26
-s31337-q-tiny/cubes/-3/9 126913f31717c2ed
+s31337-q-tiny/cubes/-1/7 ff8736eb00b1594f
+s31337-q-tiny/cubes/-1/8 3d53553259219d99
+s31337-q-tiny/cubes/-1/9 e9cda483cc913d01
+s31337-q-tiny/cubes/-2/7 e12f2aceeae0695d
+s31337-q-tiny/cubes/-2/8 7ddb99b3f096c433
+s31337-q-tiny/cubes/-2/9 3827dc1b33f72755
+s31337-q-tiny/cubes/-3/7 93122919050164a9
+s31337-q-tiny/cubes/-3/8 34cfc7096f637773
+s31337-q-tiny/cubes/-3/9 6f9a3f8a19316ce1
 s31337-q-tiny/popret/0/-1 0000000000000000
 s31337-q-tiny/popret/0/0 0000000000000000
 s31337-q-tiny/popret/0/1 0000000000000000
@@ -294,13 +296,13 @@ s4242-h-shape2/carve/42/-25 d4d8d2f4682c6c11
 s4242-h-shape2/cells/0/0 ee235862ff03515c
 s4242-h-shape2/cubes/40/-23 b5d7af5a6ad777f2
 s4242-h-shape2/cubes/40/-24 a405f93af10c224c
-s4242-h-shape2/cubes/40/-25 44dd7c467acc8267
+s4242-h-shape2/cubes/40/-25 ac88bb490425b6e9
 s4242-h-shape2/cubes/41/-23 a59f7a483d1dd87c
 s4242-h-shape2/cubes/41/-24 4ce18e60a7c75a04
-s4242-h-shape2/cubes/41/-25 2b60316839669e9d
+s4242-h-shape2/cubes/41/-25 33b7cabda389b5a2
 s4242-h-shape2/cubes/42/-23 87a0739c3a9010a8
 s4242-h-shape2/cubes/42/-24 add96d9efd56b2b1
-s4242-h-shape2/cubes/42/-25 f118a192f4e8004d
+s4242-h-shape2/cubes/42/-25 73d3206569c1eded
 s4242-h-shape2/popret/0/-1 0000000000000000
 s4242-h-shape2/popret/0/-2 0000000000000000
 s4242-h-shape2/popret/0/0 0000000000000000
@@ -354,15 +356,15 @@ s4242-q/carve/42/-23 5b2f8817db2bdd11
 s4242-q/carve/42/-24 a891df06b7c99a21
 s4242-q/carve/42/-25 246b22f8749e7e1f
 s4242-q/cells/0/0 ee235862ff03515c
-s4242-q/cubes/40/-23 cb66c428ad134dac
-s4242-q/cubes/40/-24 825a381a7e383c6c
-s4242-q/cubes/40/-25 c7dde55137eb8680
-s4242-q/cubes/41/-23 d423795f0c447d05
-s4242-q/cubes/41/-24 4ce5f90c27f33db6
-s4242-q/cubes/41/-25 dba4a8de933806ac
-s4242-q/cubes/42/-23 66231a5cf2fef280
-s4242-q/cubes/42/-24 a9240a54020b30a2
-s4242-q/cubes/42/-25 79bcd619535656cf
+s4242-q/cubes/40/-23 1ed5d9e141c8abb3
+s4242-q/cubes/40/-24 bc500bd9fce46011
+s4242-q/cubes/40/-25 c6d10b336146fea6
+s4242-q/cubes/41/-23 2d50d16d77529bdb
+s4242-q/cubes/41/-24 fc824977835a6282
+s4242-q/cubes/41/-25 06e3008c92bda9f0
+s4242-q/cubes/42/-23 7fbabbbe7650bdae
+s4242-q/cubes/42/-24 83b9f9012fa281b4
+s4242-q/cubes/42/-25 461418f676b96f72
 s4242-q/popret/0/0 0000000000000000
 s4242-q/popret/0/1 0000000000000000
 s4242-q/popret/0/2 0000000000000000
@@ -408,15 +410,15 @@ s9-profile/carve/1/0 58fac70fd9599c41
 s9-profile/carve/1/1 bb92ed43d16af775
 s9-profile/carve/1/2 23225f848400462f
 s9-profile/cells/0/0 546562735d0c6a65
-s9-profile/cubes/-1/0 38cb40391507e98b
-s9-profile/cubes/-1/1 2fa897b17cdd8af5
-s9-profile/cubes/-1/2 14ffdedb5d4bf090
-s9-profile/cubes/0/0 083106c86446db6e
-s9-profile/cubes/0/1 7decf56ce6b6209a
-s9-profile/cubes/0/2 b1b47043ff00ac46
-s9-profile/cubes/1/0 1f747af8d497b73c
-s9-profile/cubes/1/1 f3d83289c7090fa6
-s9-profile/cubes/1/2 c95658e4cca44f56
+s9-profile/cubes/-1/0 0d23a5d465826955
+s9-profile/cubes/-1/1 323e094ba805ff23
+s9-profile/cubes/-1/2 6e47804cd24b62d3
+s9-profile/cubes/0/0 874d2693efebbd37
+s9-profile/cubes/0/1 eba2b490ae3f96e5
+s9-profile/cubes/0/2 7edb4aa4985f284f
+s9-profile/cubes/1/0 e5c7648d21aff77f
+s9-profile/cubes/1/1 71feb9290b083db5
+s9-profile/cubes/1/2 fe27af0d835e7fa5
 s9-profile/popret/0/-1 0000000000000000
 s9-profile/popret/0/0 0000000000000000
 s9-profile/popret/0/1 0000000000000000
@@ -491,10 +493,10 @@ sm77-q-shape2-coast/carve/60/-90 7a9495e0c02da4f0
 sm77-q-shape2-coast/carve/61/-89 cff2b4838f8c4160
 sm77-q-shape2-coast/carve/61/-90 350305cb2ad69ccc
 sm77-q-shape2-coast/cells/0/0 71d28cb134ee5424
-sm77-q-shape2-coast/cubes/60/-89 322f1850e94cca4d
-sm77-q-shape2-coast/cubes/60/-90 19715c6640a26222
+sm77-q-shape2-coast/cubes/60/-89 153b0b3e187c5ac3
+sm77-q-shape2-coast/cubes/60/-90 e81124b674bec742
 sm77-q-shape2-coast/cubes/61/-89 3d4c84a340d9f815
-sm77-q-shape2-coast/cubes/61/-90 fbc2f074df7c025f
+sm77-q-shape2-coast/cubes/61/-90 4511753855ef5a58
 sm77-q-shape2-coast/popret/0/-1 0000000000000000
 sm77-q-shape2-coast/popret/0/0 0000000000000000
 sm77-q-shape2-coast/popret/0/1 0000000000000000

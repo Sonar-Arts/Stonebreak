@@ -14,6 +14,12 @@ import org.joml.Vector3i;
  * advances based on block hardness and tool efficiency — the held tool's SBO
  * mining data against the block's SBO material (see {@link ToolMiningRules}). Breaking completes when progress reaches 1.0;
  * instant-break blocks complete on press.
+ *
+ * <p><b>Held, not latched (#454).</b> Progress only advances while gameplay input keeps asking for it:
+ * {@link #startBreaking()} is called every frame the break button is held in {@code PLAYING}, and
+ * {@link #update()} cancels the break on the first update without such a call since the last one. Any path
+ * that stops polling the world actions (an in-game screen, the pause menu, open chat) therefore cancels
+ * the break instead of letting it complete behind the UI under the frozen crosshair.
  */
 public class BlockBreaker {
 
@@ -29,6 +35,8 @@ public class BlockBreaker {
     private float breakingProgress;
     private float breakingTime;
     private float hitSoundTimer;
+    /** {@link #startBreaking()} ran since the last {@link #update()}: the break button is still held. */
+    private boolean heldSinceUpdate;
 
     public BlockBreaker(RaycastEngine raycastEngine, Inventory inventory, AttackController attack, World world) {
         this.raycastEngine = raycastEngine;
@@ -42,7 +50,14 @@ public class BlockBreaker {
     }
 
     public void update() {
+        boolean held = heldSinceUpdate;
+        heldSinceUpdate = false;
         if (breakingBlock == null) return;
+        if (!held) {
+            // Nobody is holding the break any more (a screen opened, chat, pause): cancel, never complete.
+            reset();
+            return;
+        }
 
         Vector3i currentTarget = raycastEngine.raycast();
         if (currentTarget == null || !currentTarget.equals(breakingBlock)) {
@@ -76,6 +91,7 @@ public class BlockBreaker {
     }
 
     public void startBreaking() {
+        heldSinceUpdate = true;
         Vector3i blockPos = raycastEngine.raycast();
         if (blockPos == null) return;
 
@@ -105,6 +121,7 @@ public class BlockBreaker {
     }
 
     public void stopBreaking() {
+        heldSinceUpdate = false;
         reset();
     }
 

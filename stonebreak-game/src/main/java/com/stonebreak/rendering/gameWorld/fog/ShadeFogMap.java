@@ -89,6 +89,8 @@ public final class ShadeFogMap implements AutoCloseable {
                     gridSource = terrain;
                     grid = built;
                 }
+            } catch (com.stonebreak.world.generation.TerrainClosedException e) {
+                // The world is closing (its generator shut down mid-build): no grid, the next world rebuilds.
             } finally {
                 building.set(false);
             }

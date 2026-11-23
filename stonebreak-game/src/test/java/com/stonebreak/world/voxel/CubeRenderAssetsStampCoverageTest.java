@@ -80,6 +80,7 @@ class CubeRenderAssetsStampCoverageTest {
 
         List<String> problems = new ArrayList<>();
         List<String> clipped = new ArrayList<>();
+        List<String> drift = new ArrayList<>();
         Map<String, List<ModelQuad>> models = new LinkedHashMap<>();
         for (Map.Entry<BlockType, SBOParseResult> e : stamped.entrySet()) {
             BlockType type = e.getKey();
@@ -95,11 +96,14 @@ class CubeRenderAssetsStampCoverageTest {
                             problems, clipped, models);
                     }
                 } else {
-                    check(what, CubeRenderAssets.quads(stamp, type, false), stamp, problems, clipped, models);
+                    List<ModelQuad> quads = CubeRenderAssets.quads(stamp, type, false);
+                    check(what, quads, stamp, problems, clipped, models);
+                    checkSameSurface(what, quads, stamp, drift);
                 }
             }
         }
         assertTrue(problems.isEmpty(), "models that lost geometry or left the range: " + problems);
+        assertEquals(List.of(), drift, "models whose drawn triangles differ from their stamp's triangles");
         assertEquals(List.of(), clipped, "models clipped to the engine's corner range");
         assertTrue(models.size() > 20, "too few models checked: " + models.size());
         // The three-cell stalagmites are the models that need the wide range: their tips reach past [-1, 2].
@@ -108,6 +112,7 @@ class CubeRenderAssetsStampCoverageTest {
             .flatMap(m -> m.getValue().stream())
             .anyMatch(q -> { for (float v : q.pos()) if (v > 2f || v < -1f) return true; return false; });
         assertTrue(tallStalagmite, "no stalagmite model reaches past [-1, 2] (size-3 tips missing?)");
+        assertEquals(List.of(), spireCullProblems(models), "stalagmite spires culled against their own part cells");
 
         assumeTrue(com.openmason.engine.voxel.world.CendaVoxelWorld.isAvailable(), "Cenda voxel world unavailable");
         try (CubeWorld world = CubeWorld.create(WorldConfiguration.MIN_Y, WorldConfiguration.MAX_Y,
@@ -143,6 +148,99 @@ class CubeRenderAssetsStampCoverageTest {
             problems.add(what + ": no quads left");
         }
         models.put(what, fitted);
+    }
+
+    /**
+     * A size 2-3 stalagmite's anchor model reaches through its part cells (the same block, read as solid by the
+     * native mesher): no quad of it may cull with the face along the spire axis, or the middle tiers vanish and the
+     * tip floats (2026-11-22). Every size-2/3 variant must actually reach out, and size-1 variants keep their culls.
+     */
+    private static List<String> spireCullProblems(Map<String, List<ModelQuad>> models) {
+        List<String> problems = new ArrayList<>();
+        int tall = 0;
+        for (Map.Entry<String, List<ModelQuad>> m : models.entrySet()) {
+            String key = m.getKey();
+            if (!key.startsWith(BlockType.LIMESTONE_STALAGMITE.name() + " [stalagmite:")) continue;
+            boolean hanging = key.contains("hanging=true");
+            boolean big = !key.contains("size=1;");
+            int axis = hanging ? com.openmason.engine.voxel.stamp.render.StampFaceConventions.MMS_BOTTOM
+                : com.openmason.engine.voxel.stamp.render.StampFaceConventions.MMS_TOP;
+            boolean reaches = false;
+            for (ModelQuad q : m.getValue()) {
+                for (int c = 0; c < 4; c++) {
+                    float y = q.pos()[c * 3 + 1];
+                    reaches |= hanging ? y < -1e-3f : y > 1f + 1e-3f;
+                }
+                if (big && q.cullFace() == axis) {
+                    problems.add(key + ": quad culls with face " + axis);
+                    break;
+                }
+            }
+            if (big) {
+                tall++;
+                if (!reaches) problems.add(key + ": does not reach its part cells");
+            }
+        }
+        if (tall == 0) problems.add("no size-2/3 stalagmite variants checked");
+        return problems;
+    }
+
+    /**
+     * The model draws exactly the stamp's triangles: every quad is drawn (0,1,2) (0,2,3) by the native mesher
+     * (and the shared stamp-quad element buffer), so pairing two triangles into a quad must keep their shared
+     * edge as the 0-2 diagonal and their texture layer. A flipped diagonal folds a non-planar pair (stalagmite
+     * facets) the other way: a malformed spire.
+     */
+    private static void checkSameSurface(String what, List<ModelQuad> quads, BlockStamp stamp, List<String> drift) {
+        List<String> source = new ArrayList<>();
+        List<FaceStamp> all = new ArrayList<>();
+        if (stamp.faces() != null) all.addAll(java.util.Arrays.asList(stamp.faces()));
+        if (stamp.interior() != null) all.addAll(java.util.Arrays.asList(stamp.interior()));
+        if (stamp.protruding() != null) {
+            for (FaceStamp[] side : stamp.protruding()) all.addAll(java.util.Arrays.asList(side));
+        }
+        for (FaceStamp fs : all) {
+            if (fs == null) continue;
+            float[] p = fs.positions();
+            for (int t = 0; t < fs.vertexCount() / 3; t++) {
+                float[] tri = new float[9];
+                for (int k = 0; k < 9; k++) tri[k] = p[t * 9 + k] + 0.5f;
+                int layer = fs.layers().length > t * 3 ? Math.max(0, Math.round(fs.layers()[t * 3])) : 0;
+                String key = triangleKey(tri, layer);
+                if (key != null) source.add(key);
+            }
+        }
+        List<String> drawn = new ArrayList<>();
+        for (ModelQuad q : quads) {
+            float[] p = q.pos();
+            for (int[] t : new int[][]{{0, 1, 2}, {0, 2, 3}}) {
+                float[] tri = new float[9];
+                for (int c = 0; c < 3; c++) System.arraycopy(p, t[c] * 3, tri, c * 3, 3);
+                String key = triangleKey(tri, q.textureLayer());
+                if (key != null) drawn.add(key);
+            }
+        }
+        java.util.Collections.sort(source);
+        java.util.Collections.sort(drawn);
+        if (!source.equals(drawn)) {
+            drift.add(what);
+        }
+    }
+
+    /** A winding-preserving key of one triangle (rotated to start at its smallest vertex); null if degenerate. */
+    private static String triangleKey(float[] t, int layer) {
+        float ux = t[3] - t[0], uy = t[4] - t[1], uz = t[5] - t[2];
+        float vx = t[6] - t[0], vy = t[7] - t[1], vz = t[8] - t[2];
+        float cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+        if (cx * cx + cy * cy + cz * cz < 1e-12f) return null;
+        String[] v = new String[3];
+        for (int i = 0; i < 3; i++) {
+            v[i] = String.format(java.util.Locale.ROOT, "%.4f,%.4f,%.4f",
+                t[i * 3] + 0f, t[i * 3 + 1] + 0f, t[i * 3 + 2] + 0f);
+        }
+        int s = 0;
+        for (int i = 1; i < 3; i++) if (v[i].compareTo(v[s]) < 0) s = i;
+        return layer + ":" + v[s] + "|" + v[(s + 1) % 3] + "|" + v[(s + 2) % 3];
     }
 
     private static boolean hasGeometry(BlockStamp stamp) {

@@ -6,6 +6,7 @@ import com.openmason.engine.voxel.stamp.StampMeshProcessor.BlockStamp;
 import com.openmason.engine.voxel.stamp.StampMeshProcessor.FaceStamp;
 import com.openmason.engine.voxel.stamp.render.StampCache;
 import com.openmason.engine.voxel.stamp.render.StampEmitter;
+import com.openmason.engine.voxel.stamp.render.StampFaceConventions;
 import com.openmason.engine.voxel.world.CubeWorld;
 import com.openmason.engine.voxel.world.CubeWorld.ModelQuad;
 import com.stonebreak.blocks.BlockType;
@@ -467,6 +468,38 @@ public final class CubeRenderAssets {
                 }
             }
         }
+        return type == BlockType.LIMESTONE_STALAGMITE ? openSpireAxis(out) : out;
+    }
+
+    /**
+     * A stalagmite's anchor model draws the whole spire: a size 2-3 one reaches up (hanging: down) through
+     * its part cells, which hold the same block. The native mesher reads that neighbour as solid (a
+     * stalagmite is non-transparent host geometry) and would cull every quad facing it, so the spire lost
+     * its middle tiers and only the quads reaching past the next cell (never culled) were left, floating
+     * above the stub. The old Java emitter had the same rule as a cull policy ("never cull a stalagmite
+     * face against another stalagmite", Renderer); here it is baked into the model: when the model
+     * reaches out of its cell along the spire axis, the quads culled with that face never cull.
+     * Size-1 models (and the empty part-cell models) stay inside the cell and are unchanged.
+     */
+    static List<ModelQuad> openSpireAxis(List<ModelQuad> quads) {
+        boolean up = false, down = false;
+        for (ModelQuad q : quads) {
+            for (int c = 0; c < 4; c++) {
+                float y = q.pos()[c * 3 + 1];
+                up |= y > 1f + 1e-3f;
+                down |= y < -1e-3f;
+            }
+        }
+        if (!up && !down) {
+            return quads;
+        }
+        List<ModelQuad> out = new ArrayList<>(quads.size());
+        for (ModelQuad q : quads) {
+            boolean open = (up && q.cullFace() == StampFaceConventions.MMS_TOP)
+                || (down && q.cullFace() == StampFaceConventions.MMS_BOTTOM);
+            out.add(open ? new ModelQuad(q.pos(), q.uv(), q.normal(), q.textureLayer(), CubeWorld.CULL_NEVER,
+                q.flags()) : q);
+        }
         return out;
     }
 
@@ -484,8 +517,13 @@ public final class CubeRenderAssets {
     }
 
     /**
-     * Appends the triangles of {@code fs} as quads: a pair sharing an edge becomes the quad
-     * (pk, pk+1, q, pk+2) in the first triangle's winding, anything else a degenerate quad per triangle.
+     * Appends the triangles of {@code fs} as quads: a pair sharing an edge (same texture layer and normal - a
+     * quad carries one of each) becomes the quad
+     * (pk+1, q, pk+2, pk) in the first triangle's winding, anything else a degenerate quad per triangle.
+     * The native mesher draws every model quad as (0,1,2) (0,2,3), so the shared edge must be the 0-2 diagonal:
+     * the quad then draws exactly the two source triangles, planar or not. (It used to be (pk, pk+1, q, pk+2),
+     * whose 0-2 diagonal is the OTHER one: harmless on flat squares, but every non-planar pair - stalagmite
+     * facets - folded the wrong way and the spires rendered malformed.)
      * {@code yScale} squashes positions (and side-face v) for snow layers.
      */
     static void appendQuads(List<ModelQuad> out, FaceStamp fs, int cullFace, int flags, float yScale) {
@@ -498,7 +536,7 @@ public final class CubeRenderAssets {
         while (t < tris) {
             int a0 = t * 3;
             int[] quad = null;
-            if (t + 1 < tris) {
+            if (t + 1 < tris && layerOf(ly, a0) == layerOf(ly, a0 + 3) && sameNormal(n, a0, a0 + 3)) {
                 quad = pairQuad(p, a0, a0 + 3);
             }
             int[] verts = quad != null ? quad : new int[]{a0, a0 + 1, a0 + 2, a0 + 2};
@@ -514,13 +552,25 @@ public final class CubeRenderAssets {
                 tex[c * 2 + 1] = yScale != 1f && Math.abs(n[a0 * 3 + 1]) < 0.5f ? 1f - (1f - vv) * yScale : vv;
             }
             float[] normal = {n[a0 * 3], n[a0 * 3 + 1], n[a0 * 3 + 2]};
-            int layer = ly.length > a0 ? Math.max(0, Math.round(ly[a0])) : 0;
+            int layer = layerOf(ly, a0);
             out.add(new ModelQuad(pos, tex, normal, layer, cullFace, flags));
             t += quad != null ? 2 : 1;
         }
     }
 
-    /** The quad of two triangles at a and b sharing an edge (winding of a), or null. */
+    private static boolean sameNormal(float[] n, int u, int v) {
+        if (n.length < (Math.max(u, v) + 1) * 3) return false;
+        return n[u * 3] * n[v * 3] + n[u * 3 + 1] * n[v * 3 + 1] + n[u * 3 + 2] * n[v * 3 + 2] > 0.9999f;
+    }
+
+    private static int layerOf(float[] layers, int vertex) {
+        return layers.length > vertex ? Math.max(0, Math.round(layers[vertex])) : 0;
+    }
+
+    /**
+     * The quad of two triangles at a and b sharing an edge (winding of a), or null. Corner 0 and 2 are the shared
+     * edge, so the (0,1,2) (0,2,3) split reproduces b then a.
+     */
     private static int[] pairQuad(float[] p, int a, int b) {
         int[] matchInA = {-1, -1, -1}; // for each vertex of A: matching vertex of B
         int matches = 0;
@@ -545,7 +595,7 @@ public final class CubeRenderAssets {
             }
             if (!used) q = b + j;
         }
-        return new int[]{a + k, a + (k + 1) % 3, q, a + (k + 2) % 3};
+        return new int[]{a + (k + 1) % 3, q, a + (k + 2) % 3, a + k};
     }
 
     private static boolean same(float[] p, int u, int v) {
