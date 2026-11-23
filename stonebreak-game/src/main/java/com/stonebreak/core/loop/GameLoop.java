@@ -43,7 +43,6 @@ public final class GameLoop {
     );
 
     private final Game game;
-    private final com.stonebreak.audio.ShadeNightMusic shadeNightMusic = new com.stonebreak.audio.ShadeNightMusic();
     private final ExecutorService worldUpdateExecutor;
 
     private boolean hasInitializedMouseCaptureAfterLoading = false;
@@ -74,7 +73,7 @@ public final class GameLoop {
         if (musicManager != null) {
             com.stonebreak.audio.MusicManager.Scene scene = musicScene();
             musicManager.update(deltaTime, scene);
-            updateShadeTheme(musicManager, scene, deltaTime);
+            updateMusicCues(musicManager, scene, deltaTime);
         }
         // Weather ambience likewise, so it fades out the moment a menu or battle takes over.
         boolean hearWeather = musicScene() == com.stonebreak.audio.MusicManager.Scene.NONE;
@@ -94,22 +93,20 @@ public final class GameLoop {
     }
 
     /**
-     * The Shade's nightfall theme ({@link com.stonebreak.audio.ShadeNightMusic}): asked only during
-     * ordinary play in a real world; leaving the world arms it again.
+     * The music catalog's one-shot cues (biome themes, {@code songs/music.json}): asked only during
+     * ordinary play in a real world; leaving the world arms them again.
      */
-    private void updateShadeTheme(com.stonebreak.audio.MusicManager music,
-                                  com.stonebreak.audio.MusicManager.Scene scene, float deltaTime) {
+    private void updateMusicCues(com.stonebreak.audio.MusicManager music,
+                                 com.stonebreak.audio.MusicManager.Scene scene, float deltaTime) {
         if (!Game.isInGameWorld()) {
-            shadeNightMusic.reset();
+            music.resetCues();
             return;
         }
         Player player = Game.getPlayer();
         if (scene != com.stonebreak.audio.MusicManager.Scene.NONE || player == null || player.isDead()) {
             return;
         }
-        if (shadeNightMusic.update(Game.getWorld(), Game.getTimeOfDay(), player.getPosition(), deltaTime)) {
-            music.playShadeTheme();
-        }
+        music.updateCues(Game.getWorld(), Game.getTimeOfDay(), player.getPosition(), deltaTime);
     }
 
     /**

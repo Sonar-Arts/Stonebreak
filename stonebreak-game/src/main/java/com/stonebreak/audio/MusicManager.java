@@ -1,58 +1,74 @@
 package com.stonebreak.audio;
 
 import com.openmason.engine.audio.MusicDirector;
-import com.openmason.engine.audio.MusicDirector.Track;
 import com.openmason.engine.audio.SoundSystem;
+import com.stonebreak.audio.music.MusicCatalog;
+import com.stonebreak.audio.music.MusicCue;
+import com.stonebreak.audio.music.MusicCues;
+import com.stonebreak.audio.music.MusicPlace;
+import com.stonebreak.world.TimeOfDay;
+import com.stonebreak.world.World;
+import org.joml.Vector3dc;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.util.List;
+import java.io.IOException;
+import java.util.EnumMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
- * Stonebreak's background music: the menu playlist while a menu screen is active (main menu, world
- * select/creation, multiplayer menus, settings) and the battle playlist while a Focus battle runs;
- * {@link Scene#NONE} is silence (ordinary gameplay) apart from one-shot themes such as the Shade's
- * nightfall theme ({@link #playShadeTheme()}). Playlist rules — advance on finish, a one-track
- * playlist loops, coming back to a scene resumes from its NEXT track — are the engine's
- * {@link MusicDirector}; this class holds the playlists.
+ * Stonebreak's background music, all of it declared in {@link MusicCatalog} ({@code songs/music.json}):
+ * the {@code menu} playlist while a menu screen is active, the {@code battle} playlist while a Focus
+ * battle runs, and silence during ordinary play apart from one-shot cues (biome themes and the like,
+ * {@link #updateCues}). Playlist rules — advance on finish, a one-track playlist loops, coming back to
+ * a scene resumes from its NEXT track — are the engine's {@link MusicDirector}.
  *
  * <p>Which scene is active is the caller's to classify — see {@code GameLoop.musicScene()}. Tracks
  * are Ogg Vorbis under {@code /songs/}, streamed while they play, and loaded on their scene's first
- * activation (or {@link #preload}).
+ * activation (or {@link #preload}); a cue's track on its first play.
  */
 public final class MusicManager {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(MusicManager.class);
+
     /** What kind of moment the game is in, as far as music is concerned. */
-    public enum Scene { NONE, MENU, BATTLE }
+    public enum Scene {
+        NONE, MENU, BATTLE;
 
-    // Played in order from the first track (engine MusicDirector), then rotating: Look Beyond is the
-    // main menu theme, so it is what a fresh launch opens on.
-    private static final List<Track> MENU_PLAYLIST = List.of(
-            new Track("music_look_beyond", "/songs/menu music/Look Beyond.ogg"),
-            new Track("music_venusian_drift", "/songs/menu music/Venusian Drift.ogg"),
-            new Track("music_whispering_woods", "/songs/menu music/Whispering Woods (Lofi Lullaby).ogg")
-    );
-
-    // "No More Weakness.ogg" remains bundled for future use.
-    private static final List<Track> BATTLE_PLAYLIST = List.of(
-            new Track("music_the_deadly_dance", "/songs/battle music/The Deadly Dance.ogg")
-    );
-
-    /**
-     * The Shade's nightfall theme: a one-shot (never looped, never a playlist) started by
-     * {@link #playShadeTheme()} — see {@link ShadeNightMusic} for when.
-     */
-    static final Track SHADE_THEME = new Track("music_the_shade", "/songs/biome music/The Shade.ogg");
+        /** The catalog playlist this scene plays ({@code menu}, {@code battle}); none for NONE. */
+        String playlist() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
 
     private final SoundSystem sounds;
     private final MusicDirector<Scene> director;
-    /** A one-shot theme owns the music voice (only ever during {@link Scene#NONE}). */
-    private boolean oneShotPlaying;
+    private final MusicCues cues;
+    /** A cue owns the music voice (only ever during {@link Scene#NONE}). */
+    private boolean cuePlaying;
 
     public MusicManager(SoundSystem soundSystem) {
+        this(soundSystem, loadCatalog());
+    }
+
+    public MusicManager(SoundSystem soundSystem, MusicCatalog catalog) {
         this.sounds = soundSystem;
-        this.director = new MusicDirector<>(soundSystem,
-                Map.of(Scene.MENU, MENU_PLAYLIST, Scene.BATTLE, BATTLE_PLAYLIST),
-                GameSoundLoader.MUSIC);
+        Map<Scene, java.util.List<MusicDirector.Track>> playlists = new EnumMap<>(Scene.class);
+        playlists.put(Scene.MENU, catalog.playlist(Scene.MENU.playlist()));
+        playlists.put(Scene.BATTLE, catalog.playlist(Scene.BATTLE.playlist()));
+        this.director = new MusicDirector<>(soundSystem, playlists, GameSoundLoader.MUSIC);
+        this.cues = new MusicCues(catalog.cues());
+    }
+
+    /** The shipped catalog; a broken one is logged and leaves the game silent rather than crashing. */
+    private static MusicCatalog loadCatalog() {
+        try {
+            return MusicCatalog.load();
+        } catch (IOException | RuntimeException e) {
+            LOGGER.error("Music catalog {} failed to load; no music: {}", MusicCatalog.RESOURCE, e.getMessage());
+            return MusicCatalog.empty();
+        }
     }
 
     public boolean isEnabled() {
@@ -74,32 +90,48 @@ public final class MusicManager {
      * change of scene switches playlist immediately.
      */
     public void update(float deltaTime, Scene scene) {
-        if (oneShotPlaying) {
+        if (cuePlaying) {
             if (!sounds.isMusicPlaying()) {
-                oneShotPlaying = false; // finished on its own: it never loops
+                cuePlaying = false; // finished on its own: it never loops
             } else if (scene != Scene.NONE || !director.isEnabled()) {
                 sounds.stopMusic(); // a menu/battle playlist (or the setting) takes over
-                oneShotPlaying = false;
+                cuePlaying = false;
             }
         }
         director.update(scene == Scene.NONE ? null : scene);
     }
 
     /**
-     * Plays the Shade's nightfall theme once, if music is on and nothing else is playing (ordinary
-     * gameplay is otherwise silent). It plays to its end and is not repeated; a menu or battle scene
-     * cuts it off. Returns whether it started.
+     * Advances the catalog's cues for one frame of ordinary play by a living player whose feet are at
+     * {@code feet}, and starts the cue that is due, if any ({@link MusicCues} for when).
      */
-    public boolean playShadeTheme() {
+    public void updateCues(World world, TimeOfDay time, Vector3dc feet, float deltaTime) {
+        boolean night = time != null && time.isNight();
+        MusicCue cue = cues.update(night, deltaTime, () -> MusicPlace.of(world, feet));
+        if (cue != null) playCue(cue);
+    }
+
+    /** Forgets which cues already played: leaving (or not being in) a world. */
+    public void resetCues() {
+        cues.reset();
+    }
+
+    /**
+     * Plays {@code cue}'s track once, if music is on and nothing else is playing (ordinary gameplay is
+     * otherwise silent). It plays to its end and is not repeated; a menu or battle scene cuts it off.
+     * Returns whether it started.
+     */
+    public boolean playCue(MusicCue cue) {
         if (!director.isEnabled() || director.playingScene() != null || sounds.isMusicPlaying()) {
             return false;
         }
-        if (!sounds.isMusicLoaded(SHADE_THEME.name())) {
-            GameSoundLoader.MUSIC.load(sounds, SHADE_THEME);
+        MusicDirector.Track track = cue.track();
+        if (!sounds.isMusicLoaded(track.name())) {
+            GameSoundLoader.MUSIC.load(sounds, track);
         }
-        if (!sounds.isMusicLoaded(SHADE_THEME.name())) return false;
-        sounds.playMusic(SHADE_THEME.name());
-        oneShotPlaying = true;
+        if (!sounds.isMusicLoaded(track.name())) return false;
+        sounds.playMusic(track.name());
+        cuePlaying = true;
         return true;
     }
 

@@ -1,0 +1,21 @@
+{
+  "playlists": {
+    "menu": [
+      "menu music/Look Beyond.ogg",
+      "menu music/Venusian Drift.ogg",
+      "menu music/Whispering Woods (Lofi Lullaby).ogg"
+    ],
+    "battle": [
+      "battle music/The Deadly Dance.ogg"
+    ]
+  },
+  "cues": [
+    {
+      "id": "the_shade",
+      "track": "biome music/The Shade.ogg",
+      "time": "night",
+      "biomes": ["SHADE"],
+      "surface": true
+    }
+  ]
+}
