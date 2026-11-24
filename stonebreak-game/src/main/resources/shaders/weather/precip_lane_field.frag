@@ -20,6 +20,8 @@ uniform float uRadius;      // lanes reach this far from the camera...
 uniform float uInnerRadius; // ...and start this far out (the far ring leaves the near one's lanes to it)
 uniform float uBelow;       // and fall no further than this below it
 uniform bool uFar;          // true: ground from the coarse relief, snow from uSnow
+uniform bool uCameraBuried; // the camera is under ground: far lanes never reach down to it
+uniform float uBuriedFloor;  // ...and never end below the surface over it (render space; very low when not buried)
 // Near ring. RG: ground height (very low where unknown), snow (0 or 1), per
 // block column; texel (i, j) is the block whose corner is uGroundOrigin + (i, j).
 uniform sampler2D uGround;
@@ -47,7 +49,9 @@ void main() {
 
     float ground, snow;
     if (uFar) {
-        ground = min(site.ground, uCameraPos.y) - FAR_SINK;
+        // In a valley below the coarse relief the lanes reach down to the eye; in a cave they must not.
+        ground = (uCameraBuried ? site.ground : min(site.ground, uCameraPos.y)) - FAR_SINK;
+        ground = max(ground, uBuriedFloor);
         snow = uSnow;
     } else {
         ivec2 g = clamp(ivec2(floor(lane.xz - uGroundOrigin)), ivec2(0), textureSize(uGround, 0) - 1);

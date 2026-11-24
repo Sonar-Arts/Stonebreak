@@ -26,8 +26,9 @@ import org.joml.Vector3f;
  *
  * <p>Where it rains comes from the CPU cloud field ({@link ClientWeather#columnAt}, the mirror of the field the
  * clouds and the lanes are drawn from), sampled on a coarse grid a few times a second. Ground heights come from
- * loaded chunks ({@link WeatherSurface}), as for the lanes, and also feed the GPU backend's height field, so GPU drops
- * land where CPU ones would.
+ * loaded cubes, or the surface tracker's estimate where the top is not loaded ({@link
+ * WeatherSurface#estimatedGroundY}: no rain in a cave under LOD-only ground), as for the lanes, and also feed the GPU
+ * backend's height field, so GPU drops land where CPU ones would.
  *
  * <p>Off (the near ring stays lanes) with {@code -Dstonebreak.rain=lanes}, when the player switched particles off, or
  * when the asset is missing. Main thread only; allocation-free per frame.
@@ -215,7 +216,9 @@ public final class PrecipitationFx {
         for (int j = 0; j < GROUND_SIZE; j++) {
             for (int i = 0; i < GROUND_SIZE; i++) {
                 int k = j * GROUND_SIZE + i;
-                int y = WeatherSurface.groundY(world, x0 + i, z0 + j);
+                // A column whose top is not loaded (a cave under LOD-only ground) still has ground above the
+                // cave: the tracker's estimate, never "open down to the camera".
+                int y = WeatherSurface.estimatedGroundY(world, x0 + i, z0 + j);
                 float g = y == WeatherSurface.UNKNOWN ? GROUND_UNKNOWN : y;
                 if (g != ground[k]) {
                     ground[k] = g;

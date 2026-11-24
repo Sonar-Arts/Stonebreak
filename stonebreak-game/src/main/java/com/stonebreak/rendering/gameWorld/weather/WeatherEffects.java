@@ -71,8 +71,19 @@ public final class WeatherEffects {
      */
     private static final float NIGHT_SKY_HUE = 0.3f;
 
+    /**
+     * Blocks of world over the camera ({@link WeatherSurface#coverAround}) at which the rain fog starts to thin...
+     */
+    static final double FOG_COVER_FROM = 4.0;
+    /** ...and at which it is gone: under ground there is no rain to haze the air. */
+    static final double FOG_COVER_TO = 16.0;
+    /** Time constant of the fog clearing (or returning) as the camera goes under (or out of) ground. */
+    private static final float SHELTER_SECONDS = 1.5f;
+
     private float storminess;
     private float snow;
+    /** 1 in the open, 0 under ground: how much of the rain fog reaches the camera. */
+    private float open = 1f;
     private float extinction;
     private float flash;
     private final Vector3f fogColor = new Vector3f(0.5f);
@@ -88,21 +99,25 @@ public final class WeatherEffects {
     public void update(ClientWeather weather, World world, org.joml.Vector3dc cameraPos, float totalTime, float flash) {
         float target = weather == null ? 0f : sampleAround(weather, cameraPos);
         float targetSnow = world == null ? snow : snowAround(world, cameraPos);
+        float targetOpen = world == null || world.isClosed() ? 1f
+                : openness(WeatherSurface.coverAround(world, cameraPos.x(), cameraPos.y(), cameraPos.z()));
         if (Float.isNaN(lastTime)) {
             storminess = target; // first frame: start where the weather already is
             snow = targetSnow;
+            open = targetOpen;
         } else {
             float dt = Math.max(0f, totalTime - lastTime);
             float ease = 1f - (float) Math.exp(-dt / RESPONSE_SECONDS);
             storminess += (target - storminess) * ease;
             snow += (targetSnow - snow) * ease;
+            open += (targetOpen - open) * (1f - (float) Math.exp(-dt / SHELTER_SECONDS));
         }
         lastTime = totalTime;
         this.flash = flash;
         // Rain and snow fall from the cloud base down; above the clouds the air is clear.
         float under = smoothstep(Math.clamp(
                 (float) ((PrecipitationFog.BASE + PrecipitationFog.RISE - cameraPos.y()) / PrecipitationFog.RISE), 0f, 1f));
-        extinction = extinction(storminess, snow) * under;
+        extinction = extinction(storminess, snow) * under * open;
         SceneLight.setWeather(1f - MAX_DIMMING * storminess, flash);
     }
 
@@ -138,7 +153,13 @@ public final class WeatherEffects {
         return heaviest * (float) Math.pow(Math.min(precipitation, 1f), RATE_EXPONENT);
     }
 
-    /** 0 = clear, 1 = the heaviest storm, around the camera. */
+    /** How much rain fog reaches a camera under {@code cover} blocks of world: 1 in the open, 0 under ground. */
+    static float openness(double cover) {
+        float t = (float) Math.clamp((cover - FOG_COVER_FROM) / (FOG_COVER_TO - FOG_COVER_FROM), 0.0, 1.0);
+        return 1f - t * t * (3f - 2f * t);
+    }
+
+        /** 0 = clear, 1 = the heaviest storm, around the camera. */
     public float storminess() {
         return storminess;
     }
