@@ -173,6 +173,8 @@ public class World {
     // Daylight 0..1 for its mobs' sight (#321). The server level binds its clock; full light
     // until then (and on worlds with no clock: tests, render views).
     private volatile java.util.function.DoubleSupplier daylightSource;
+    /** The server's clock (absolute ticks), for simulation that must read world time; null on clients. */
+    private volatile java.util.function.LongSupplier worldTicksSource;
 
     // How thick the Shade's night fog is, 0..1, for the creatures that hunt in it. The server level
     // binds its clock; none (0) until then, so unbound worlds have no fog-born spawns.
@@ -319,7 +321,7 @@ public class World {
 
     /**
      * The authoritative world created with the feature set {@code features} (boulders, ...; part of the world's
-     * identity: null = {@link WorldFeatureVersion#CURRENT}, a saved world passes its own; only DIFFUSION worlds use it).
+     * identity: null = {@link com.stonebreak.world.generation.WorldFeatureVersion#CURRENT}, a saved world passes its own; only DIFFUSION worlds use it).
      */
     public static World createHeadless(WorldConfiguration config, long seed, TerrainGeneratorType generatorType,
                                        TerrainScalePreset scale, ClimateLayout layout, HeightCurveVersion curve,
@@ -1694,6 +1696,17 @@ public class World {
             noiseBus = new com.stonebreak.mobs.entities.ai.perception.NoiseBus();
         }
         return noiseBus;
+    }
+
+    /** Bind the authoritative clock (absolute world ticks) this world's simulation reads; null for none. */
+    public void setWorldTicksSource(java.util.function.LongSupplier worldTicksSource) {
+        this.worldTicksSource = worldTicksSource;
+    }
+
+    /** The authoritative world time in ticks ({@code TimeOfDay#getTotalTicks}), or -1 with no clock bound. */
+    public long worldTicks() {
+        java.util.function.LongSupplier source = worldTicksSource;
+        return source != null ? source.getAsLong() : -1L;
     }
 
     /** Bind the clock this world's daylight follows; null restores full light. */

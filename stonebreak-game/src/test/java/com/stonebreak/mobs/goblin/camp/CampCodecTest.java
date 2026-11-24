@@ -10,6 +10,8 @@ import com.stonebreak.mobs.goblin.GoblinLoadout.Headwear;
 import org.joml.Vector3d;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -59,5 +61,50 @@ class CampCodecTest {
         assertEquals(0, camp.members().size());
         assertEquals(6, camp.stash().food());
         assertEquals(1, camp.population());
+    }
+
+    @Test
+    void anOldSaveWithNoStampDecodesAndOwesNothing() {
+        GoblinLoadout loadout = new GoblinLoadout(MobWeapon.DAGGER, Headwear.BANDANA, "Red", false);
+        String v1 = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                ("1\nm " + loadout.encode() + "\nr 40\ns " + ItemType.COOKED_BEEF.getId() + " 2\n")
+                        .getBytes(StandardCharsets.UTF_8));
+
+        GoblinCamp back = CampCodec.decode(FIRE, v1);
+
+        assertEquals(List.of(loadout), back.waiting());
+        assertEquals(40.0f, back.repairWait());
+        assertEquals(6, back.stash().food());
+        assertEquals(-1L, back.offlineSince(), "no stamp: no catch-up");
+    }
+
+    @Test
+    void theStampRoundTripsThroughTheFire() {
+        GoblinCamp camp = new GoblinCamp(FIRE);
+        camp.addWaiting(new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
+
+        GoblinCamp back = CampCodec.decode(FIRE, CampCodec.encode(camp, 7000L));
+
+        assertEquals(7000L, back.offlineSince(), "frozen at 7000: owes from then");
+        assertEquals(1, back.population());
+    }
+
+    @Test
+    void aCampRefrozenBeforeCatchingUpKeepsItsFirstStamp() {
+        GoblinCamp camp = new GoblinCamp(FIRE);
+        camp.addWaiting(new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
+        GoblinCamp thawed = CampCodec.decode(FIRE, CampCodec.encode(camp, 1000L));
+
+        GoblinCamp again = CampCodec.decode(FIRE, CampCodec.encode(thawed, 9000L));
+
+        assertEquals(1000L, again.offlineSince(), "nothing was lived through in between");
+    }
+
+    @Test
+    void withNoClockNoStampIsWritten() {
+        GoblinCamp camp = new GoblinCamp(FIRE);
+        camp.addWaiting(new GoblinLoadout(MobWeapon.DAGGER, Headwear.NONE, null, false));
+        assertEquals(-1L, CampCodec.decode(FIRE, CampCodec.encode(camp)).offlineSince());
+        assertEquals(-1L, CampCodec.decode(FIRE, CampCodec.encode(camp, -1L)).offlineSince());
     }
 }

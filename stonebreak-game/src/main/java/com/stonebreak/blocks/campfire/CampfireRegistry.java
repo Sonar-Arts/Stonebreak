@@ -144,11 +144,17 @@ public class CampfireRegistry {
         }
     }
 
-    /** A save point: writes every fire's current state (cooking progress) into the cube. */
+    /**
+     * A save point: writes every fire's current state (cooking progress, and the camp it anchors
+     * as of now) into the cube.
+     */
     public void flushToWorld(World world, Cube cube) {
         for (CampfireState s : statesIn(cube)) {
             BlockPos p = s.pos();
             if (CampfireState.isCampfireState(world.getBlockStateAt(p.x(), p.y(), p.z()))) {
+                if (s.campData() != null) {
+                    s.setCampData(anchor.saving(p, s.campData()));
+                }
                 write(world, s);
             }
         }

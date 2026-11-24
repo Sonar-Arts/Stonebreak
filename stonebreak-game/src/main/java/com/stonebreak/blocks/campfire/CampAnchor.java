@@ -21,6 +21,15 @@ public interface CampAnchor {
     /** The fire is gone — broken, or replaced by something else. */
     void extinguished(BlockPos fire);
 
+    /**
+     * A save point while the fire stays loaded: what to save in it now, given what it carries
+     * ({@code campData}). Lets the camp stamp its data with the time of the save, so a crash
+     * between save points cannot leave it an old stamp.
+     */
+    default String saving(BlockPos fire, String campData) {
+        return campData;
+    }
+
     CampAnchor NONE = new CampAnchor() {
         @Override public void loaded(BlockPos fire, String campData) { }
         @Override public String unloading(BlockPos fire) { return null; }
