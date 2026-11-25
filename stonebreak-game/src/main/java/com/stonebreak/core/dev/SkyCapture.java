@@ -22,7 +22,8 @@ import java.util.Locale;
  * {@code e+10_toward.png} and the like. Each shot waits {@link #SETTLE_SECONDS} so the clouds'
  * temporal history converges on the new light. {@code day} picks the moon's phase (default 0,
  * a new moon: a dark night, so the stars show); {@code quit} closes the game when done.
- * {@code -Dstonebreak.autosky.elevations=-0.5,-1,-1.5} replaces the elevation list.
+ * {@code -Dstonebreak.autosky.elevations=-0.5,-1,-1.5} replaces the elevation list, and
+ * {@code -Dstonebreak.autosky.side=dawn} shoots the morning's mirror image instead.
  * Inert unless the property is set.
  */
 public final class SkyCapture {
@@ -30,6 +31,7 @@ public final class SkyCapture {
     /** Sun elevations (degrees) to capture, high to low. */
     static final float[] ELEVATIONS = {10f, 3f, 0f, -3f, -6f, -10f, -15f, -20f};
     private final float[] elevations = elevations();
+    private static final boolean DAWN_SIDE = "dawn".equalsIgnoreCase(System.getProperty("stonebreak.autosky.side"));
     private static final String[] VIEWS = {"toward", "overhead", "away"};
     /** Camera pitch (degrees) for the level views: the horizon sits in the lower part of the frame. */
     private static final float LEVEL_PITCH = 12f;
@@ -114,7 +116,10 @@ public final class SkyCapture {
             return;
         }
         if (shot % VIEWS.length == 0) {
-            long ticks = day * TimeOfDay.TICKS_PER_DAY + duskTick(elevations[shot / VIEWS.length]);
+            long dusk = duskTick(elevations[shot / VIEWS.length]);
+            // Dawn mirrors dusk: as long before sunrise (tick 0) as dusk is after sunset.
+            long tickOfDay = DAWN_SIDE ? Math.floorMod(TimeOfDay.DUSK - dusk, TimeOfDay.TICKS_PER_DAY) : dusk;
+            long ticks = day * TimeOfDay.TICKS_PER_DAY + tickOfDay;
             MultiplayerSession.requestServerTimeSet(ticks);
             TimeOfDay clock = Game.getTimeOfDay();
             if (clock != null) clock.setTicks(ticks);
