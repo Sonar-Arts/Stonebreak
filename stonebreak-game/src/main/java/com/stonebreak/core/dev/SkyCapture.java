@@ -98,6 +98,7 @@ public final class SkyCapture {
         if (shot < 0) {
             if ((now - armedNanos) / 1e9 < warmupSeconds) return;
             freezeServerClock();
+            if (!Game.isHudHidden()) Game.toggleHudHidden(); // the sky alone, as F1 shows it
             next(now);
         }
         aim();
