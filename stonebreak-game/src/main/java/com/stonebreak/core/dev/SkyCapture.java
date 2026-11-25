@@ -22,12 +22,14 @@ import java.util.Locale;
  * {@code e+10_toward.png} and the like. Each shot waits {@link #SETTLE_SECONDS} so the clouds'
  * temporal history converges on the new light. {@code day} picks the moon's phase (default 0,
  * a new moon: a dark night, so the stars show); {@code quit} closes the game when done.
+ * {@code -Dstonebreak.autosky.elevations=-0.5,-1,-1.5} replaces the elevation list.
  * Inert unless the property is set.
  */
 public final class SkyCapture {
 
     /** Sun elevations (degrees) to capture, high to low. */
     static final float[] ELEVATIONS = {10f, 3f, 0f, -3f, -6f, -10f, -15f, -20f};
+    private final float[] elevations = elevations();
     private static final String[] VIEWS = {"toward", "overhead", "away"};
     /** Camera pitch (degrees) for the level views: the horizon sits in the lower part of the frame. */
     private static final float LEVEL_PITCH = 12f;
@@ -106,17 +108,17 @@ public final class SkyCapture {
 
     private void next(long now) {
         shot++;
-        if (shot >= ELEVATIONS.length * VIEWS.length) {
+        if (shot >= elevations.length * VIEWS.length) {
             done = true;
             System.out.println("[autosky] done: " + dir.toAbsolutePath());
             return;
         }
         if (shot % VIEWS.length == 0) {
-            long ticks = day * TimeOfDay.TICKS_PER_DAY + duskTick(ELEVATIONS[shot / VIEWS.length]);
+            long ticks = day * TimeOfDay.TICKS_PER_DAY + duskTick(elevations[shot / VIEWS.length]);
             MultiplayerSession.requestServerTimeSet(ticks);
             TimeOfDay clock = Game.getTimeOfDay();
             if (clock != null) clock.setTicks(ticks);
-            System.out.println("[autosky] sun at " + ELEVATIONS[shot / VIEWS.length] + " deg: ticks " + ticks);
+            System.out.println("[autosky] sun at " + elevations[shot / VIEWS.length] + " deg: ticks " + ticks);
         }
         shotAtNanos = now + (long) (SETTLE_SECONDS * 1e9);
     }
@@ -135,8 +137,10 @@ public final class SkyCapture {
 
     private boolean capture(int width, int height) {
         if (done || shot < 0 || System.nanoTime() < shotAtNanos) return done && quit;
-        float elevation = ELEVATIONS[shot / VIEWS.length];
-        String name = String.format(Locale.ROOT, "e%+03d_%s.png", Math.round(elevation), VIEWS[shot % VIEWS.length]);
+        float elevation = elevations[shot / VIEWS.length];
+        String name = elevation == Math.round(elevation)
+                ? String.format(Locale.ROOT, "e%+03d_%s.png", Math.round(elevation), VIEWS[shot % VIEWS.length])
+                : String.format(Locale.ROOT, "e%+05.1f_%s.png", elevation, VIEWS[shot % VIEWS.length]);
         String file = dir.resolve(name).toString();
         if (DevScreenshot.capture(file, width, height)) {
             float actual = (float) Math.toDegrees(Math.asin(Math.clamp(sunAtShot.y, -1f, 1f)));
@@ -144,6 +148,15 @@ public final class SkyCapture {
         }
         next(System.nanoTime());
         return done && quit;
+    }
+
+    private static float[] elevations() {
+        String list = System.getProperty("stonebreak.autosky.elevations");
+        if (list == null || list.isBlank()) return ELEVATIONS;
+        String[] p = list.split(",");
+        float[] e = new float[p.length];
+        for (int i = 0; i < p.length; i++) e[i] = Float.parseFloat(p[i].trim());
+        return e;
     }
 
     /** Freezes the integrated server's clock, so the sun holds still for each shot. */
