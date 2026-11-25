@@ -15,23 +15,49 @@ uniform vec3 u_sunAureole;      // the sky's glow round the sun (0 = none)
 
 // SkyLight.SUNSET_SOFTNESS
 const float SUNSET_FOG_SOFTNESS = 0.3;
+// The gold's scale heights and hues (SkyLight.SUNSET_H_AWAY / SUNSET_H_SUN,
+// SUNSET_GOLD_LOW / SUNSET_GOLD_HIGH; sky.frag applySunset).
+const float SUNSET_FOG_H_AWAY = 0.06;
+const float SUNSET_FOG_H_SUN = 0.35;
+const vec3 SUNSET_FOG_GOLD_LOW = vec3(1.0, 0.42, 0.18);
+const vec3 SUNSET_FOG_GOLD_HIGH = vec3(1.0, 0.80, 0.48);
 
-// How golden the sky is toward compass direction `flatDir` (unit xz), 0..1:
-// SkyLight.sunsetWeight × the gold's strength.
-float sunsetFogWeight(vec2 flatDir) {
+// The gold's scale height toward unit compass direction `flatDir`.
+float sunsetFogHeight(vec2 flatDir) {
+    return mix(SUNSET_FOG_H_AWAY, SUNSET_FOG_H_SUN, 0.5 + 0.5 * dot(flatDir, u_sunFlat));
+}
+
+// How golden the sky is in unit direction `dir`, 0..1: SkyLight.sunsetWeight ×
+// the gold's strength. Round the sky it reaches u_sunsetCoverage from the sun;
+// up the sky it falls off as exp(-y / H), so the zenith stays blue.
+float sunsetFogWeight(vec3 dir) {
     float strength = max(u_sunsetFog.r, max(u_sunsetFog.g, u_sunsetFog.b));
     if (strength <= 0.0) return 0.0;
-    float fromSun = 0.5 - 0.5 * dot(flatDir, u_sunFlat);
-    return strength * (1.0 - smoothstep(u_sunsetCoverage - SUNSET_FOG_SOFTNESS,
-            u_sunsetCoverage + SUNSET_FOG_SOFTNESS, fromSun));
+    vec2 flatDir = dir.xz / max(length(dir.xz), 1e-4);
+    float fromSun = 0.5 - 0.5 * dot(dir.xz, u_sunFlat);
+    float around = 1.0 - smoothstep(u_sunsetCoverage - SUNSET_FOG_SOFTNESS,
+            u_sunsetCoverage + SUNSET_FOG_SOFTNESS, fromSun);
+    return strength * around * exp(-max(dir.y, 0.0) / sunsetFogHeight(flatDir));
+}
+
+// The gold's colour in unit direction `dir`: deep orange on the horizon (and over
+// the land below it, which meets the sky there), paling with height. u_sunsetFog
+// carries the weather's tint, applied over the whole grade.
+vec3 sunsetFogGold(vec3 dir) {
+    float strength = max(u_sunsetFog.r, max(u_sunsetFog.g, u_sunsetFog.b));
+    vec2 flatDir = dir.xz / max(length(dir.xz), 1e-4);
+    float t = clamp(max(dir.y, 0.0) / sunsetFogHeight(flatDir), 0.0, 1.0);
+    vec3 tint = u_sunsetFog / max(strength * SUNSET_FOG_GOLD_LOW, vec3(1e-4));
+    return mix(SUNSET_FOG_GOLD_LOW, SUNSET_FOG_GOLD_HIGH, t) * tint;
 }
 
 vec3 horizonFogColor(vec3 clearFog, vec3 toFragment) {
+    vec3 dir = toFragment / max(length(toFragment), 1e-4);
     vec2 flatDir = toFragment.xz / max(length(toFragment.xz), 1e-4);
     vec3 fog = clearFog;
-    float strength = max(u_sunsetFog.r, max(u_sunsetFog.g, u_sunsetFog.b));
-    if (strength > 0.0) {
-        fog = mix(fog, u_sunsetFog / strength, sunsetFogWeight(flatDir));
+    float weight = sunsetFogWeight(dir);
+    if (weight > 0.0) {
+        fog = mix(fog, sunsetFogGold(dir), weight);
     }
     if (u_twilightBand > 0.0) {
         // Distant land lies on the horizon, under the shadow's edge wherever it has risen.

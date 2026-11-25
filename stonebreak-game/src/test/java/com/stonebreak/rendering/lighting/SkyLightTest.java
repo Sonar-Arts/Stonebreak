@@ -3,6 +3,7 @@ package com.stonebreak.rendering.lighting;
 import com.stonebreak.rendering.gameWorld.weather.WeatherEffects;
 import com.stonebreak.world.MoonCycle;
 import com.stonebreak.world.TimeOfDay;
+import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -60,7 +61,7 @@ class SkyLightTest {
             assertEquals(dusk.twilightBand(), dawn.twilightBand(), 1e-3, when);
             assertEquals(dusk.sunColor().y, dawn.sunColor().y, 1e-3, when);
         }
-        assertTrue(at(2, 0).evening() > 0.99f, "sunrise is golden too");
+        assertEquals(SkyLight.EVENING_CAP, at(2, 0).evening(), 1e-6, "sunrise is golden too");
     }
 
     @Test
@@ -116,23 +117,40 @@ class SkyLightTest {
     }
 
     @Test
-    void theEveningGoldCoversMostOfTheSkyAtItsHeight() {
+    void theEveningGoldStaysLowAndTowardTheSunUnderABlueZenith() {
         SkyLight sunset = at(2, 12_000);
-        // The pre-moon sunset colour overhead, and fog and clouds read it as before.
-        assertEquals(1f, sunset.evening(), 1e-6);
-        assertEquals(1.0f, sunset.zenith().x, 1e-6);
-        assertEquals(0.5f, sunset.zenith().y, 1e-6);
-        assertEquals(0.3f, sunset.zenith().z, 1e-6);
-        assertEquals(sunset.zenith(), sunset.skyColor());
+        // The fog's and clouds' sky colour keeps only a hint of the gold: the zenith stays blue.
+        assertEquals(SkyLight.EVENING_CAP, sunset.evening(), 1e-6);
+        assertTrue(sunset.zenith().z > sunset.zenith().x, "blue zenith at sunset, got " + sunset.zenith());
         float c = sunset.sunsetCoverage();
         assertEquals(1f, SkyLight.sunsetWeight(c, 0f), 1e-6, "gold under the sun");
-        assertEquals(1f, SkyLight.sunsetWeight(c, 0.5f), 1e-6, "gold overhead and to the sides");
-        float opposite = SkyLight.sunsetWeight(c, 1f);
-        assertTrue(opposite > 0.7f && opposite < 1f, "a little thinner opposite the sun, got " + opposite);
-        // Half-way from day to sunset at 5 PM, as the old sky had it.
-        assertEquals(0.765f, at(2, 11_000).zenith().x, 1e-4);
+        assertEquals(0f, SkyLight.sunsetWeight(c, 1f), 1e-6, "none opposite: the Earth's shadow rises there");
+        Vector3f sun = sunset.sunDir();
+        // Up the sky the gold falls away: next to none overhead, most of it low toward the sun.
+        assertTrue(SkyLight.sunsetWeight(c, new Vector3f(0f, 1f, 0f), sun) < 0.01f, "overhead");
+        Vector3f lowTowardSun = new Vector3f(sun.x, 0.17f, sun.z).normalize();
+        assertTrue(SkyLight.sunsetWeight(c, lowTowardSun, sun) > 0.5f, "10 degrees up over the sun");
+        // The sky's horizon (what the fog fades to) takes the deep horizon gold.
+        assertTrue(sunset.horizon().x > sunset.horizon().z, "warm horizon, got " + sunset.horizon());
+        // It grows in through the afternoon.
+        assertTrue(at(2, 11_000).sunsetColor().x < sunset.sunsetColor().x);
         // Mornings keep the blue hour until the dawn's gold, the evening's mirror, arrives.
         assertEquals(0f, at(2, TimeOfDay.TICKS_PER_DAY - 2_100).evening(), 1e-6);
+    }
+
+    @Test
+    void theGoldIsThinOppositeTheSunAndTallToward() {
+        assertEquals(SkyLight.SUNSET_H_SUN, SkyLight.sunsetHeight(1f), 1e-6);
+        assertEquals(SkyLight.SUNSET_H_AWAY, SkyLight.sunsetHeight(-1f), 1e-6);
+        // exp(-y/H): at one scale height up toward the sun, 1/e of the horizon's gold.
+        Vector3f sun = new Vector3f(1f, -0.01f, 0f).normalize();
+        float h = SkyLight.SUNSET_H_SUN;
+        Vector3f up = new Vector3f((float) Math.sqrt(1f - h * h), h, 0f);
+        float c = 2f; // full coverage: the round-the-sky term is 1
+        assertEquals((float) Math.exp(-1.0), SkyLight.sunsetWeight(c, up, sun), 1e-4);
+        assertEquals(1f, SkyLight.sunsetWeight(c, new Vector3f(1f, 0f, 0f), sun), 1e-6);
+        assertEquals(1f, SkyLight.sunsetWeight(c, new Vector3f(1f, -0.3f, 0f).normalize(), sun), 1e-6,
+                "no fall-off below the horizon");
     }
 
     @Test

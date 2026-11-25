@@ -258,7 +258,7 @@ public class WorldRenderer {
             skyColor = weatherEffects.tintSky(sky.skyColor(), new Vector3f());
             clearFogColor = weatherEffects.tintSky(
                     new Vector3f(sky.clearZenith()).lerp(sky.clearHorizon(), 0.5f), new Vector3f());
-            weatherEffects.tintSky(new Vector3f(sky.sunsetColor()).mul(1.2f), horizonGold);
+            weatherEffects.tintSky(sky.sunsetColor(), horizonGold);
             sunsetCoverage = sky.sunsetCoverage();
             // Overcast hides the sun and the twilight bands it casts on the sky.
             float clear = 1f - weatherEffects.storminess();

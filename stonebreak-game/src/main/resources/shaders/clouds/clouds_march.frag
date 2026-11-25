@@ -344,8 +344,7 @@ void main() {
     vec3 sunLight = u_sunColor * sunsetFalloff(cosTheta);
     // The sky behind the cloud, and the light it casts on it.
     vec3 haze = horizonFogColor(u_hazeColor, rd);
-    vec2 flatDir = rd.xz / max(length(rd.xz), 1e-4);
-    vec3 ambient = mix(u_ambientClear, u_ambientColor, min(sunsetFogWeight(flatDir), 1.0));
+    vec3 ambient = mix(u_ambientClear, u_ambientColor, min(sunsetFogWeight(rd), 1.0));
 
     float scale = slab ? stepScale(tNear, tFar) : 1.0;
     float rayDither = dither(gl_FragCoord.xy);

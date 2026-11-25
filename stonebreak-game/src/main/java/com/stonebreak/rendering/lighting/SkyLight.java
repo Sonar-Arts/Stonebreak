@@ -24,13 +24,18 @@ import org.joml.Vector3f;
  *       full-moon sky is indigo; a new-moon sky is close to black.</li>
  * </ul>
  *
- * <p>The golden hour keeps the warm gold Stonebreak's sunset had before the moon
- * (the README logo's), but as a region of the sky, not the whole dome. It follows
- * the sun's height, not the clock, so dawn mirrors dusk. From 4 PM the gold grows
- * in until, as the sun touches the horizon at 6 PM, it covers the sky (a little
- * thinner opposite the sun). Then it draws back: the anti-sun horizon goes to the
- * blue hour first, then the zenith, and last the sun's own side, before the moonlit
- * night. {@link #sunsetWeight} is the shape; the sky shader draws it per pixel, and
+ * <p>The golden hour is a warm band low on the sky, broad toward the sun and thin
+ * opposite it; the zenith stays blue. Real twilight keeps a deep-blue zenith because
+ * the sunlight reaching it has crossed the ozone layer at a grazing angle, and ozone's
+ * Chappuis band absorbs its orange and red. So the gold falls off with height as
+ * exp(−y/H), its scale height H low opposite the sun ({@link #SUNSET_H_AWAY}) and higher
+ * toward it ({@link #SUNSET_H_SUN}), where forward scattering lifts the glow. Its hue
+ * pales with height, deep orange on the horizon ({@link #SUNSET_GOLD_LOW}, where the
+ * light crossed the most air) to pale gold at H ({@link #SUNSET_GOLD_HIGH}). It follows
+ * the sun's height, not the clock: from 4 PM the band grows in until, as the sun
+ * touches the horizon at 6 PM, it reaches about two-thirds of the way round. Then it
+ * draws back toward the sun, leaving the anti-sun horizon to the Earth's shadow first.
+ * {@link #sunsetWeight} is the shape; the sky shader draws it per pixel, and
  * {@code zenith}/{@code horizon} here already include it for the fog and clouds.
  *
  * <p>The real golden hour, with the sun between about +6° and −4°, is warm directional
@@ -100,9 +105,17 @@ public record SkyLight(
     /** Low sunlight: the gold between the noon white and the horizon's {@link #SUNSET} orange. */
     private static final Vector3f GOLDEN_SUN = new Vector3f(1.0f, 0.78f, 0.52f);
     private static final Vector3f WHITE = new Vector3f(1f);
-    /** The pre-moon sunset sky, whole-sky orange; its horizon was 1.2× it. */
+    /** The low sun's orange: sunlight's hue on the horizon (the README logo's sunset). */
     private static final Vector3f SUNSET = new Vector3f(1.0f, 0.5f, 0.3f);
-    private static final float SUNSET_HORIZON = 1.2f;
+    /** The evening gold on the horizon and at its scale height (sky.frag SUNSET_GOLD_LOW / HIGH). */
+    static final Vector3f SUNSET_GOLD_LOW = new Vector3f(1.0f, 0.42f, 0.18f);
+    static final Vector3f SUNSET_GOLD_HIGH = new Vector3f(1.0f, 0.80f, 0.48f);
+    /**
+     * The gold's scale height (sine of elevation) straight opposite the sun and toward it
+     * (sky.frag SUNSET_H_AWAY / SUNSET_H_SUN): the band is ~3.5° thick on the far side
+     * and ~20° over the sun.
+     */
+    static final float SUNSET_H_AWAY = 0.06f, SUNSET_H_SUN = 0.35f;
     /**
      * How far through its day (degrees of the day's turn, see {@link #dayAngle}) the sun
      * is from the horizon when the gold begins or ends: 30° is two hours, so it grows
@@ -110,8 +123,17 @@ public record SkyLight(
      * the mirror image, 4 AM to 8 AM.
      */
     static final float GOLDEN_SPAN = 30f;
-    /** At its height the gold covers the sky, about 85% strength on the horizon opposite the sun. */
-    static final float PEAK_COVERAGE = 1.15f;
+    /**
+     * At its height the gold reaches about two-thirds of the way round the horizon from the
+     * sun (full to 0.3, gone by 0.9 in {@link #sunsetWeight}'s units), so the horizon opposite
+     * stays free for the Earth's shadow.
+     */
+    static final float PEAK_COVERAGE = 0.6f;
+    /**
+     * The most the gold tints the fog's and clouds' sky colour ({@link #evening}): the
+     * zenith above them stays blue, and the sky shader's own overhead gold is next to none.
+     */
+    static final float EVENING_CAP = 0.15f;
     /** Width of the gold's soft edge, in {@link #sunsetWeight}'s distance units. */
     static final float SUNSET_SOFTNESS = 0.3f;
     /** Moonlight on the ground: desaturated cool blue (see the class comment). */
@@ -185,12 +207,14 @@ public record SkyLight(
             float retreat = Math.max(0f, -dayAngle / GOLDEN_SPAN);
             coverage = lerp(PEAK_COVERAGE, -SUNSET_SOFTNESS, retreat);
         }
-        Vector3f sunsetColor = new Vector3f(SUNSET).mul(sunset);
-        // Overhead sits half-way round from the sun; the horizon averages its ring.
-        float evening = sunset * sunsetWeight(coverage, 0.5f);
+        Vector3f sunsetColor = new Vector3f(SUNSET_GOLD_LOW).mul(sunset);
+        // Overhead sits half-way round from the sun, but the gold hugs the horizon, so
+        // the sky's colour over the fog and clouds keeps only a hint of it.
+        float evening = Math.min(sunset * sunsetWeight(coverage, 0.5f), EVENING_CAP);
+        // The horizon averages its ring.
         float horizonShare = sunset * Math.clamp(coverage, 0f, 1f);
-        zenith = lerp(clearZenith, SUNSET, evening);
-        horizon = lerp(clearHorizon, new Vector3f(SUNSET).mul(SUNSET_HORIZON), horizonShare);
+        zenith = lerp(clearZenith, SUNSET_GOLD_HIGH, evening);
+        horizon = lerp(clearHorizon, SUNSET_GOLD_LOW, horizonShare);
         Vector3f skyColor = lerp(lerp(zenith, horizon, 0.5f), zenith, evening);
         // The afterglow: red over the set sun, from just before it sets to nautical twilight.
         // It grows in slowly from 10° up, so the red does not bloom all at once.
@@ -256,6 +280,26 @@ public record SkyLight(
      */
     public static float sunsetWeight(float coverage, float fromSun) {
         return 1f - smoothstep(coverage - SUNSET_SOFTNESS, coverage + SUNSET_SOFTNESS, fromSun);
+    }
+
+    /**
+     * How golden the sky is in direction {@code dir} (unit), 0..1: {@link #sunsetWeight(float, float)}
+     * round the sky, times the fall-off with height exp(−y/H). H runs from {@link #SUNSET_H_AWAY}
+     * opposite the sun to {@link #SUNSET_H_SUN} toward it. sky.frag applySunset and
+     * sunset_fog.glsl mirror this.
+     */
+    public static float sunsetWeight(float coverage, Vector3f dir, Vector3f sunDir) {
+        float sunFlat = (float) Math.hypot(sunDir.x, sunDir.z);
+        float sx = sunFlat > 1e-4f ? sunDir.x / sunFlat : 0f, sz = sunFlat > 1e-4f ? sunDir.z / sunFlat : 0f;
+        float fromSun = 0.5f - 0.5f * (dir.x * sx + dir.z * sz);
+        float dirFlat = (float) Math.hypot(dir.x, dir.z);
+        float toward = dirFlat > 1e-4f ? (dir.x * sx + dir.z * sz) / dirFlat : 0f;
+        return sunsetWeight(coverage, fromSun) * (float) Math.exp(-Math.max(dir.y, 0f) / sunsetHeight(toward));
+    }
+
+    /** The gold's scale height for a view whose compass bearing has {@code toward} = cos(angle from the sun's). */
+    static float sunsetHeight(float toward) {
+        return lerp(SUNSET_H_AWAY, SUNSET_H_SUN, 0.5f + 0.5f * toward);
     }
 
 
