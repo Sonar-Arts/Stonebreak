@@ -63,6 +63,17 @@ class CloudSunlightTest {
     }
 
     @Test
+    void hazierAirReddensTheBeam() {
+        assertEquals(CloudSunlight.TAU, CloudSunlight.tau(1f, new Vector3f()));
+        Vector3f dusk = CloudSunlight.sunColor(sunY(4f), CloudSunlight.SLAB_BASE_M,
+                CloudSunlight.tau(1.3f, new Vector3f()), new Vector3f());
+        Vector3f dawn = CloudSunlight.sunColor(sunY(4f), CloudSunlight.SLAB_BASE_M,
+                CloudSunlight.tau(0.75f, new Vector3f()), new Vector3f());
+        assertTrue(dusk.y / dusk.x < dawn.y / dawn.x, "warmer at dusk: " + dusk + " vs " + dawn);
+        assertTrue(dusk.x < dawn.x, "and dimmer");
+    }
+
+    @Test
     void theTableSpansTheSlabToTheCirrus() {
         assertEquals(CloudSunlight.SLAB_BASE_M, CloudSunlight.virtualAltitude(CloudType.slabBottom()), 1e-3f);
         assertEquals(CloudSunlight.SLAB_TOP_M, CloudSunlight.virtualAltitude(CloudType.slabTop()), 1e-3f);

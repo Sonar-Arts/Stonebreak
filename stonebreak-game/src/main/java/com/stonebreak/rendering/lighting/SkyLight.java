@@ -45,6 +45,13 @@ import org.joml.Vector3f;
  * horizon as a slate band with the pink Belt of Venus above it ({@link #twilightBand}).
  * Then come the blue hour (−4° to −6°) and nautical twilight.
  *
+ * <p><b>Dawn is not dusk.</b> By evening the day has lifted dust, smoke and sea salt
+ * into the air, and the night lets it settle, so the dusk sky carries more aerosol
+ * than the dawn sky ({@link #aerosol}). Aerosol scatters all colours alike and mostly
+ * forward, so at dusk the glow round the sun is broader and warmer, the afterglow
+ * stronger and the horizon hazier, and the beam reaching the clouds redder; dawn's
+ * cleaner air keeps purer pinks and blues.
+ *
  * <p>Vectors are shared and must not be modified; copy one to change it.
  */
 public record SkyLight(
@@ -87,7 +94,14 @@ public record SkyLight(
         Vector3f keyDir,
         /* Its colour × strength: {@link #sunLight} by day (white at noon), a faint cool blue by moonlight. */
         Vector3f keyLight,
-        boolean keyIsMoon) {
+        boolean keyIsMoon,
+        /*
+         * How much aerosol the air holds, relative to a clear day's (1): {@link #AEROSOL_DUSK}
+         * with the sun in the west, {@link #AEROSOL_DAWN} with it in the east, 1 between. It
+         * widens the sun's aureole, strengthens the afterglow, hazes the horizon and scales
+         * the aerosol share of the clouds' optical depth.
+         */
+        float aerosol) {
 
     // Palette (linear, the game's sky colour space).
     private static final Vector3f DAY_ZENITH = new Vector3f(0.53f, 0.81f, 0.92f);
@@ -136,6 +150,8 @@ public record SkyLight(
     static final float EVENING_CAP = 0.15f;
     /** Width of the gold's soft edge, in {@link #sunsetWeight}'s distance units. */
     static final float SUNSET_SOFTNESS = 0.3f;
+    /** Aerosol at dusk and at dawn, relative to a clear day's (see {@link #aerosol}). */
+    static final float AEROSOL_DUSK = 1.3f, AEROSOL_DAWN = 0.75f;
     /** Moonlight on the ground: desaturated cool blue (see the class comment). */
     private static final Vector3f MOONLIGHT = new Vector3f(0.70f, 0.80f, 1.0f);
 
@@ -221,7 +237,9 @@ public record SkyLight(
         // The afterglow: red over the set sun, from just before it sets to nautical twilight.
         // It grows in slowly from 10° up, so the red does not bloom all at once.
         float glow = smoothstep(-14f, -5f, sunElevation) * (1f - smoothstep(-2f, 10f, sunElevation));
-        Vector3f sunGlow = new Vector3f(AFTERGLOW).mul(0.7f * glow);
+        // Hazier evening air glows stronger; dawn's clean air, fainter.
+        float aerosol = aerosol(sunDir);
+        Vector3f sunGlow = new Vector3f(AFTERGLOW).mul(0.7f * glow * aerosol);
 
         // Sunlight: white high up, gold low down, the sunset orange on the horizon, and
         // gone just after the sun sets, where the moon takes over (from nothing).
@@ -261,7 +279,17 @@ public record SkyLight(
         return new SkyLight(new Vector3f(sunDir), new Vector3f(moonDir), phase, moonLight,
                 zenith, horizon, clearZenith, clearHorizon, sunsetColor, coverage,
                 sunGlow, sunColor, sunLight, new Vector3f(clearHorizon), earthShadowHeight, twilightBand,
-                skyColor, daylight, evening, ambient, keyDir, keyLight, keyIsMoon);
+                skyColor, daylight, evening, ambient, keyDir, keyLight, keyIsMoon, aerosol);
+    }
+
+    /**
+     * The air's aerosol for a sun in direction {@code sunDir}: {@link #AEROSOL_DUSK} in the
+     * west (+X, the evening), {@link #AEROSOL_DAWN} in the east, easing to a clear day's 1
+     * as the sun nears the meridian (and the anti-meridian at midnight).
+     */
+    static float aerosol(Vector3f sunDir) {
+        float side = smoothstep(0f, 0.5f, Math.abs(sunDir.x));
+        return 1f + (sunDir.x > 0f ? AEROSOL_DUSK - 1f : AEROSOL_DAWN - 1f) * side;
     }
 
     /**

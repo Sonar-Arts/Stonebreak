@@ -40,13 +40,26 @@ public final class CloudSunlight {
     static final double EARTH_RADIUS_M = 6.371e6;
     /** Half-width (radians) of the sun's edge on the cloud's horizon: the disc is ~0.27° in radius. */
     static final float SUN_EDGE = 0.005f;
+    /** Zenith optical depth of Rayleigh scattering at 610, 550 and 465 nm (red, green, blue). */
+    static final Vector3f RAYLEIGH_TAU = new Vector3f(0.06f, 0.097f, 0.19f);
     /**
-     * Zenith optical depth per channel (red, green, blue): Rayleigh scattering plus a
-     * little aerosol, about the clear-sky values at 610, 550 and 465 nm.
+     * Zenith optical depth of a clear day's aerosol, about the same in every channel (haze
+     * scatters colours alike). With Rayleigh's it makes {@link #TAU}.
      */
-    public static final Vector3f TAU = new Vector3f(0.16f, 0.20f, 0.30f);
+    static final Vector3f AEROSOL_TAU = new Vector3f(0.10f, 0.103f, 0.11f);
+    /** Zenith optical depth per channel on a clear day: (0.16, 0.20, 0.30). */
+    public static final Vector3f TAU = tau(1f, new Vector3f());
 
     private CloudSunlight() {}
+
+    /**
+     * The zenith optical depth with {@code aerosol} times a clear day's aerosol
+     * ({@link com.stonebreak.rendering.lighting.SkyLight#aerosol()}), into {@code dest}: the
+     * hazier evening air reddens and dims the beam more than dawn's.
+     */
+    public static Vector3f tau(float aerosol, Vector3f dest) {
+        return dest.set(AEROSOL_TAU).mul(aerosol).add(RAYLEIGH_TAU);
+    }
 
     /** The lowest block height the table covers: the bottom of the cloud slab. */
     public static float tableBottom() {

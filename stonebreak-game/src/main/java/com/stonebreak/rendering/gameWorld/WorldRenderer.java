@@ -276,7 +276,8 @@ public class WorldRenderer {
                     weatherEffects.tintSky(sky.sunsetColor(), new Vector3f()), sky.sunsetCoverage(),
                     new Vector3f(sky.sunGlow()).mul(clear), sky.sunColor(),
                     earthShadow, earthShadowHeight, twilightBand, sky.daylight(), seaHorizon, CELESTIAL_POLE,
-                    com.stonebreak.world.TimeOfDay.skyAngle(timeOfDay.getNormalizedTime()), totalTime);
+                    com.stonebreak.world.TimeOfDay.skyAngle(timeOfDay.getNormalizedTime()), totalTime,
+                    sky.aerosol());
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
             keyDirection = sunDirection;
@@ -285,7 +286,7 @@ public class WorldRenderer {
             ambientLightLevel = 1.0f;
             skyParams = new SkyParams(sunDirection, new Vector3f(sunDirection).negate(), 0f,
                     skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f, new Vector3f(),
-                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f, seaHorizon, CELESTIAL_POLE, 0f, totalTime);
+                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f, seaHorizon, CELESTIAL_POLE, 0f, totalTime, 1f);
         }
 
         // Cube terrain: this world's stream events feed the region renderer (idempotent attach); publish
@@ -395,7 +396,7 @@ public class WorldRenderer {
         // The evening gold fogs land on the sun's side; underwater the murk is all there is.
         SunsetFog.set(cameraUnderwater ? new Vector3f() : horizonGold, sunsetCoverage, sunDirection);
         SunsetFog.setTwilight(earthShadow, earthShadowHeight, cameraUnderwater ? 0f : twilightBand,
-                cameraUnderwater ? new Vector3f() : sunAureole);
+                cameraUnderwater ? new Vector3f() : sunAureole, sky);
         // Underwater the fog is a VOLUME around the eye, so it is measured as a
         // sphere; the atmospheric fog keeps its horizontal measure, which is
         // what makes a distant peak fade with its base instead of pulling clear

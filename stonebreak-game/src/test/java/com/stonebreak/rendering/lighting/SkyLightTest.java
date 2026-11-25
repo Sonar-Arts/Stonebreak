@@ -50,7 +50,18 @@ class SkyLightTest {
     }
 
     @Test
-    void dawnMirrorsDusk() {
+    void duskIsHazierThanDawn() {
+        SkyLight dusk = at(2, 12_300), dawn = at(2, TimeOfDay.TICKS_PER_DAY - 300);
+        assertEquals(SkyLight.AEROSOL_DUSK, dusk.aerosol(), 1e-3);
+        assertEquals(SkyLight.AEROSOL_DAWN, dawn.aerosol(), 1e-3);
+        assertEquals(1f, at(2, TimeOfDay.NOON).aerosol(), 0.01f, "a clear day's at noon");
+        // The same sun height, a stronger afterglow in the evening's dusty air.
+        assertEquals(dusk.sunDir().y, dawn.sunDir().y, 1e-4);
+        assertTrue(dusk.sunGlow().x > dawn.sunGlow().x * 1.5f, dusk.sunGlow() + " vs " + dawn.sunGlow());
+    }
+
+    @Test
+    void dawnMirrorsDuskInShape() {
         for (long offset = -2_400; offset <= 2_400; offset += 100) {
             SkyLight dusk = at(2, 12_000 + offset);
             SkyLight dawn = at(2, Math.floorMod(-offset, TimeOfDay.TICKS_PER_DAY));

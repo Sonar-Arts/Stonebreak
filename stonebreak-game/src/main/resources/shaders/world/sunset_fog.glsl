@@ -12,6 +12,7 @@ uniform vec3 u_earthShadow;     // the Earth's shadow colour (sky.frag applyEart
 uniform float u_earthShadowHeight; // its edge's height opposite the sun (sine of elevation)
 uniform float u_twilightBand;   // how strongly it shows (0 = none)
 uniform vec3 u_sunAureole;      // the sky's glow round the sun (0 = none)
+uniform float u_aureoleWidth;   // its width, 1 - cos of the angle from the sun (wider in hazy air)
 
 // SkyLight.SUNSET_SOFTNESS
 const float SUNSET_FOG_SOFTNESS = 0.3;
@@ -68,5 +69,5 @@ vec3 horizonFogColor(vec3 clearFog, vec3 toFragment) {
     // sky.frag getSunContribution's glow, along the level ray to the fragment.
     vec3 level = normalize(vec3(flatDir.x, 0.0, flatDir.y));
     float sunDot = dot(level, u_sunDir3);
-    return fog + u_sunAureole * exp(-pow(max(1.0 - sunDot, 0.0) / 0.25, 1.5));
+    return fog + u_sunAureole * exp(-pow(max(1.0 - sunDot, 0.0) / u_aureoleWidth, 1.5));
 }

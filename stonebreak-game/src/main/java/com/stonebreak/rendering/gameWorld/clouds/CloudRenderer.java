@@ -98,6 +98,7 @@ public final class CloudRenderer {
 
     private final Matrix4f invViewProj = new Matrix4f();
     private final Vector3f sunColor = new Vector3f();
+    private final Vector3f tau = new Vector3f();
     private static final Vector3f DEFAULT_SUN = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
     /** Daytime storm grey the deck's sky light dims toward (the old clouds' night tint). */
     private static final Vector3f STORM_TINT = new Vector3f(0.16f, 0.17f, 0.24f);
@@ -266,7 +267,8 @@ public final class CloudRenderer {
         Vector3f keyDirection = sunIsKey ? sunTrue : sky.keyDir();
         float[] table = sunlight.table();
         if (sunIsKey) {
-            CloudSunlight.bake(sunTrue.y, CloudSunlight.TAU, SUN_ON_CLOUD, table);
+            Vector3f tau = sky != null ? CloudSunlight.tau(sky.aerosol(), this.tau) : CloudSunlight.TAU;
+            CloudSunlight.bake(sunTrue.y, tau, SUN_ON_CLOUD, table);
         } else {
             CloudSunlight.fill(sunColor.set(sky.keyLight()).mul(MOONLIT_CLOUD), table);
         }
