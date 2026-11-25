@@ -259,9 +259,36 @@ public final class AssetExportService {
             throw new IllegalArgumentException("patch must be a non-empty object of manifest fields");
         }
         Editor editor = editor(kind);
+        // SBE 1.7 character: {"character": "<.omchar path>" | null}, read through the sandbox (not a manifest field).
+        byte[] character = null;
+        boolean setCharacter = false, clearCharacter = false;
+        JsonNode rest = patch;
+        if (kind == Kind.SBE && patch.has("character")) {
+            JsonNode c = patch.get("character");
+            if (c.isNull()) {
+                clearCharacter = true;
+            } else {
+                Path file = writes == null ? Path.of(c.asText()) : writes.sandbox().resolveExisting(c.asText());
+                try {
+                    character = java.nio.file.Files.readAllBytes(file);
+                } catch (java.io.IOException e) {
+                    throw new IllegalArgumentException("cannot read " + file + ": " + e.getMessage(), e);
+                }
+                setCharacter = true;
+            }
+            rest = ((com.fasterxml.jackson.databind.node.ObjectNode) patch.deepCopy()).without("character");
+        }
+        final byte[] characterBytes = character;
+        final boolean doSet = setCharacter, doClear = clearCharacter;
+        final JsonNode manifestPatch = rest;
+        final String characterLabel = setCharacter ? patch.get("character").asText() : null;
         return onMain(() -> {
             requireLoaded(editor, kind);
-            editor.apply(patch);
+            if (!manifestPatch.isEmpty()) editor.apply(manifestPatch);
+            if (editor instanceof SbeEditor sbe) {
+                if (doSet) sbe.w().setCharacter(characterBytes, Path.of(characterLabel).getFileName().toString());
+                if (doClear) sbe.w().clearCharacter();
+            }
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("path", editor.path() == null ? null : editor.path().toString());
             out.put("dirty", editor.dirty());
@@ -555,7 +582,11 @@ public final class AssetExportService {
         public boolean has() { return w.hasDocument(); }
         public boolean dirty() { return w.isDirty(); }
         public Path path() { return w.currentPath(); }
-        public Map<String, Object> describe() { return AssetExportBuilder.describe(w.snapshotDocument()); }
+        public Map<String, Object> describe() {
+            Map<String, Object> out = AssetExportBuilder.describe(w.snapshotDocument());
+            out.put("character", w.describeCharacter());
+            return out;
+        }
         public void apply(JsonNode patch) { w.applyDocument(AssetExportBuilder.patchSbe(w.snapshotDocument(), patch)); }
         public String validate() { return w.validateForWrite(); }
         public boolean write(String path) { return w.writeDocumentTo(path); }

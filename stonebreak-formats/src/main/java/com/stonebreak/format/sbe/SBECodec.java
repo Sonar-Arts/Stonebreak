@@ -46,7 +46,7 @@ public final class SBECodec implements FormatCodec<SBEParser.ParsedSBE>, EntityM
         return new SBEParser().parse(file);
     }
 
-    /** The SBE as a neutral entity model: base + variant OMOs, per-state clips, sounds, FX. */
+    /** The SBE as a neutral entity model: base + variant OMOs, per-state clips, sounds, FX, character (1.7+). */
     @Override
     public EntityModelSource importEntity(String sourceId, InputStream in) throws IOException {
         SBEParser.ParsedSBE parsed = new SBEParser().parse(in);
@@ -67,6 +67,6 @@ public final class SBECodec implements FormatCodec<SBEParser.ParsedSBE>, EntityM
             }
         }
         return new EntityModelSource(doc.objectId(), doc.objectName(), parsed.omoBytes(), variants, clips,
-                doc.sounds(), parsed.soundBytes(), doc.fx());
+                doc.sounds(), parsed.soundBytes(), doc.fx(), parsed.characterBytes());
     }
 }

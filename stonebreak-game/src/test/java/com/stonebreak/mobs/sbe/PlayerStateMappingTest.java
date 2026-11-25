@@ -22,14 +22,16 @@ class PlayerStateMappingTest {
     @Test
     void publishedPlayerHasCompatibleClipsForEveryState() {
         var asset = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
-        var partIds = asset.geometryFor("Default").parts().stream()
-                .map(EntityPart::id).collect(Collectors.toSet());
+        // Clips key the skeleton's BONES since the #456 re-rig: every track binds a joint of the rig.
+        var partIds = asset.geometryFor("Default").rig().rig().joints().stream()
+                .filter(j -> j.kind() == com.openmason.engine.rig.RigJoint.Kind.BONE)
+                .map(com.openmason.engine.rig.RigJoint::id).collect(Collectors.toSet());
         for (var state : PlayerStateMapping.PlayerMovementState.values()) {
             var clip = asset.clipFor(PlayerStateMapping.sbeState(state));
             assertNotNull(clip, state.name());
             assertFalse(clip.tracks().isEmpty(), state.name());
             clip.tracks().forEach(track -> assertTrue(partIds.contains(track.partId()),
-                    state + " references absent part " + track.partName()));
+                    state + " references absent bone " + track.partName()));
         }
         var sprint = asset.clipFor("sprinting");
         assertTrue(sprint.loop());

@@ -53,7 +53,7 @@ public class NameTags {
             if (cameraPos != null && cameraPos.distanceSquared(pos) > MAX_DISTANCE_SQ) continue;
 
             float[] screen = WorldMarker.project(vp, pos.x,
-                    pos.y + remote.getType().getHeight() + HEAD_OFFSET, pos.z, screenW, screenH);
+                    pos.y + com.stonebreak.player.PlayerCharacter.get().height() + HEAD_OFFSET, pos.z, screenW, screenH);
             if (screen == null) continue;
 
             out.add(WorldMarker.text(WorldMarker.id(WorldMarker.Kind.NAMETAG, remote), WorldMarker.Kind.NAMETAG,

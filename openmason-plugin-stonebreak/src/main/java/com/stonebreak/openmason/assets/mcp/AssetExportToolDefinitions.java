@@ -73,7 +73,8 @@ public final class AssetExportToolDefinitions {
                     k + "_editor_set",
                     "Patch the " + kind + " editor's draft with a partial object of manifest fields "
                             + "(see describe_api topic=saving). States and embedded bytes are untouched; "
-                            + "the window refreshes and turns dirty.",
+                            + "the window refreshes and turns dirty."
+                            + (kind == Kind.SBE ? " character: an .omchar path to embed (SBE 1.7) or null to remove." : ""),
                     McpSchema.of(mapper)
                             .obj("patch", "Partial manifest fields").required("patch")
                             .build(),

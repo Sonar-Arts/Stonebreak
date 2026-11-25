@@ -39,7 +39,7 @@ public class EntitySightingTracker {
 
         Camera camera = player.getCamera();
         Vector3d feet = player.getPosition();
-        Vector3d cameraPos = new Vector3d(feet.x, feet.y + com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET, feet.z);
+        Vector3d cameraPos = new Vector3d(feet.x, feet.y + com.stonebreak.player.PlayerCharacter.get().eyeHeight(), feet.z);
         Vector3f front = camera.getFront();
         float frontLen = front.length();
         if (frontLen < 0.001f) return;

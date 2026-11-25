@@ -264,7 +264,7 @@ public class PlayerArmRenderer {
             com.stonebreak.world.lighting.WorldLightingContext ctx =
                 new com.stonebreak.world.lighting.WorldLightingContext(world);
             return com.openmason.engine.voxel.lighting.VertexLightSampler.samplePointSky(
-                ctx, (float) pos.x, (float) pos.y + 1.6f, (float) pos.z);
+                ctx, (float) pos.x, (float) pos.y + com.stonebreak.player.PlayerCharacter.get().eyeHeight(), (float) pos.z);
         } catch (Exception ignored) {
             // Lighting sampler throws when the player's chunk is unloaded (early boot, menu transitions).
             // Return full brightness so the arm is never rendered pitch-black.

@@ -13,7 +13,6 @@ import com.stonebreak.world.growth.SaplingGrowthSystem;
 public class BlockPlacementValidator implements IBlockPlacementService {
 
     // Constants for player collision detection
-    private static final float PLAYER_HEIGHT = 1.8f;
     private static final float PLAYER_WIDTH = 0.6f;
 
     private final World world;
@@ -138,7 +137,7 @@ public class BlockPlacementValidator implements IBlockPlacementService {
         double pMinX = playerPos.x() - halfPlayerWidth;
         double pMaxX = playerPos.x() + halfPlayerWidth;
         double pMinY = playerPos.y(); // Player's feet
-        double pMaxY = playerPos.y() + PLAYER_HEIGHT; // Player's head
+        double pMaxY = playerPos.y() + PlayerConstants.PLAYER_HEIGHT; // top of the collision box
         double pMinZ = playerPos.z() - halfPlayerWidth;
         double pMaxZ = playerPos.z() + halfPlayerWidth;
 

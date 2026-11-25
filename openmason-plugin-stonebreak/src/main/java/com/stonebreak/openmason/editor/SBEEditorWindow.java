@@ -49,12 +49,14 @@ public class SBEEditorWindow {
     private static final String TAB_VARIANTS = "core.variants";
     private static final String TAB_SOUNDS = "core.sounds";
     private static final String TAB_FX = "core.fx";
+    private static final String TAB_CHARACTER = "core.character";
     private static final java.util.List<AssetSectionSet.Tab> CORE_TABS = java.util.List.of(
             new AssetSectionSet.Tab(TAB_METADATA, "Metadata", 0, null),
             new AssetSectionSet.Tab(TAB_STATES, "States", 100, null),
             new AssetSectionSet.Tab(TAB_VARIANTS, "Variants", 200, null),
             new AssetSectionSet.Tab(TAB_SOUNDS, "Sounds", 300, null),
-            new AssetSectionSet.Tab(TAB_FX, "FX", 350, null));
+            new AssetSectionSet.Tab(TAB_FX, "FX", 350, null),
+            new AssetSectionSet.Tab(TAB_CHARACTER, "Character", 380, null));
 
     private final ImBoolean visible = new ImBoolean(false);
     private final FileDialogService fileDialogService;
@@ -65,6 +67,8 @@ public class SBEEditorWindow {
     private final SBEVariantsEditor variantsEditor;
     private final SoundsEditor soundsEditor;
     private final FxBindingsEditor fxEditor;
+    /** The embedded character definition (SBE 1.7, Stonebreak #456). */
+    private final SBECharacterTab characterTab = new SBECharacterTab(() -> dirty = true);
     /** The open project's folder (FX the bindings are checked against); null = presets only. */
     private java.util.function.Supplier<String> projectDirectory = () -> null;
     /** Game-data sections contributed by plugins (#431; Stonebreak: the entity type). */
@@ -209,9 +213,35 @@ public class SBEEditorWindow {
     /** Replace the edited manifest (embedded bytes kept), refresh the form, mark dirty, show. */
     public void applyDocument(SBEFormat.Document doc) {
         this.loadedManifest = doc;
+        byte[] character = characterTab.bytes(); // embedded since the file was opened: not in the loaded bytes
         populateBuffers(doc, loadedStateAssetBytes);
+        if (character != null && doc.hasCharacter()) characterTab.restore(character, loadedOmoBytes);
         this.dirty = true;
         this.visible.set(true);
+    }
+
+    /** Embeds an .omchar (bytes) as the entity's character definition (SBE 1.7); marks dirty. */
+    public void setCharacter(byte[] omchar, String label) {
+        characterTab.set(omchar, label, loadedOmoBytes);
+    }
+
+    /** Removes the embedded character definition; marks dirty when there was one. */
+    public void clearCharacter() {
+        characterTab.clear();
+    }
+
+    /** The embedded character (profile, roles, metrics, sockets, fit against the model), or null. */
+    public java.util.Map<String, Object> describeCharacter() {
+        return characterTab.describe(loadedOmoBytes);
+    }
+
+    private static byte[] readFile(String path) {
+        try {
+            return java.nio.file.Files.readAllBytes(Path.of(path));
+        } catch (IOException e) {
+            logger.warn("Could not read {}", path, e);
+            return null;
+        }
     }
 
     /** Null when the draft can be written; otherwise the first blocking problem. */
@@ -221,6 +251,7 @@ public class SBEEditorWindow {
         if (err == null) err = variantsEditor.validate();
         if (err == null) err = soundsEditor.validate();
         if (err == null) err = fxEditor.validate();
+        if (err == null) err = characterTab.validate(loadedOmoBytes);
         if (err != null) return err;
         AssetSectionSet.Problem problem = sections.firstError();
         if (problem != null) return problem.message();
@@ -269,6 +300,7 @@ public class SBEEditorWindow {
                 stateAssetBytes != null ? stateAssetBytes::get : f -> null);
         fxEditor.load(doc.fx());
         fxEditor.rescan();
+        characterTab.load(doc, stateAssetBytes, loadedOmoBytes);
         sections.load(doc);
         tabs = sections.tabs(CORE_TABS);
         if (selectedTab >= tabs.size()) selectedTab = 0;
@@ -307,6 +339,11 @@ public class SBEEditorWindow {
                         case TAB_VARIANTS -> variantsEditor.render();
                         case TAB_SOUNDS -> soundsEditor.render();
                         case TAB_FX -> fxEditor.render();
+                        case TAB_CHARACTER -> characterTab.render(loadedOmoBytes,
+                                cb -> { if (fileDialogService != null) fileDialogService.showOpenDialog(
+                                        FileDialogService.StartIn.PROJECT, cb::accept,
+                                        com.openmason.main.systems.io.BuiltinFileTypes.OMCHAR); },
+                                SBEEditorWindow::readFile);
                         default -> { }
                     }
                 }
@@ -458,6 +495,9 @@ public class SBEEditorWindow {
         assetBytes.putAll(variantsEditor.variantAssetBytesByFilename());
         // Embedded sound samples (1.4+) ride in the same filename-keyed map.
         assetBytes.putAll(soundsEditor.soundBytesByFilename());
+        if (characterTab.bytes() != null) {
+            assetBytes.put(SBEFormat.CHARACTER_FILENAME, characterTab.bytes());
+        }
 
         boolean ok = serializer.exportFromDocument(edited, loadedOmoBytes, assetBytes, pathStr);
         if (ok) {
@@ -493,7 +533,7 @@ public class SBEEditorWindow {
                 soundsEditor.toSoundData(),
                 fxEditor.toFxData(),
                 loadedManifest.extensions() // game data: kept as loaded unless a section changes it
-        ));
+        )).withCharacter(characterTab.ref());
     }
 
     /**

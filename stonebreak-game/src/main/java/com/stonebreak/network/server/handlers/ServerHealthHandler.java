@@ -331,7 +331,7 @@ public final class ServerHealthHandler {
                                LivingEntity.DamageSource source, HitKind kind) {
         attacker.send(new KillCreditS2C(EntityType.REMOTE_PLAYER.ordinal(), dealt, target.isDead(), 0, -1,
                 (byte) source.ordinal(), kind.wireId(),
-                target.x(), target.y() + PLAYER_HEIGHT * 0.9f, target.z()), false);
+                target.x(), target.y() + com.stonebreak.player.PlayerCharacter.get().eyeHeight(), target.z()), false);
     }
 
     private static Entity.BoundingBox bodyBox(ServerPlayer p) {

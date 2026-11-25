@@ -25,8 +25,13 @@ public final class SwimFx {
      * blocks/s: a splash, and a first ripple ring where it went in.
      */
     public void enteredWater(EntityType type, World world, Vector3dc feet, float impactSpeed) {
-        EntityFx.splash(type, feet.x(), feet.y(), feet.z(), impactSpeed);
-        ripple(type, world, feet.x(), feet.y(), feet.z());
+        enteredWater(type.getSbeObjectId(), type.getHeight(), world, feet, impactSpeed);
+    }
+
+    /** {@link #enteredWater(EntityType, World, Vector3dc, float)} for a swimmer by SBE asset id and body height. */
+    public void enteredWater(String assetId, float bodyHeight, World world, Vector3dc feet, float impactSpeed) {
+        EntityFx.splash(assetId, feet.x(), feet.y(), feet.z(), impactSpeed);
+        ripple(assetId, bodyHeight, world, feet.x(), feet.y(), feet.z());
         rippleTimer = 0f;
     }
 
@@ -39,6 +44,12 @@ public final class SwimFx {
      */
     public void update(float dt, EntityType type, World world, Vector3dc feet,
                        boolean touchingWater, boolean eyesSubmerged, float horizontalSpeed) {
+        update(dt, type.getSbeObjectId(), type.getHeight(), world, feet, touchingWater, eyesSubmerged, horizontalSpeed);
+    }
+
+    /** {@link #update(float, EntityType, World, Vector3dc, boolean, boolean, float)} by asset id and body height. */
+    public void update(float dt, String assetId, float bodyHeight, World world, Vector3dc feet,
+                       boolean touchingWater, boolean eyesSubmerged, float horizontalSpeed) {
         if (!touchingWater || eyesSubmerged) {
             rippleTimer = 0f;
             return;
@@ -46,13 +57,13 @@ public final class SwimFx {
         rippleTimer += dt;
         if (horizontalSpeed > PlayerConstants.WATER_RIPPLE_SPEED_THRESHOLD
                 && rippleTimer >= PlayerConstants.WATER_RIPPLE_SPAWN_INTERVAL) {
-            ripple(type, world, feet.x(), feet.y(), feet.z());
+            ripple(assetId, bodyHeight, world, feet.x(), feet.y(), feet.z());
             rippleTimer = 0f;
         }
     }
 
-    private static void ripple(EntityType type, World world, double x, double feetY, double z) {
-        EntityFx.ripple(type, x, surfaceY(world, type, x, feetY, z), z);
+    private static void ripple(String assetId, float bodyHeight, World world, double x, double feetY, double z) {
+        EntityFx.ripple(assetId, x, surfaceY(world, bodyHeight, x, feetY, z), z);
     }
 
     /**
@@ -60,7 +71,10 @@ public final class SwimFx {
      * body treading water), or the feet when the body is not partly in water (no world, dry, or under).
      */
     static double surfaceY(World world, EntityType type, double x, double feetY, double z) {
-        float height = type == null ? 0f : type.getHeight();
+        return surfaceY(world, type == null ? 0f : type.getHeight(), x, feetY, z);
+    }
+
+    static double surfaceY(World world, float height, double x, double feetY, double z) {
         float submerged = WaterSubmersion.fractionAt(world, x, feetY, z, height);
         return submerged > 0f && submerged < 1f ? feetY + submerged * height : feetY;
     }

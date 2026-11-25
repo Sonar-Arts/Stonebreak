@@ -86,8 +86,13 @@ public final class EntityFx {
 
     /** {@link #splash(EntityType, org.joml.Vector3f, float)} at a world position. */
     public static boolean splash(EntityType type, double feetX, double feetY, double feetZ, float impactSpeed) {
+        return type != null && splash(type.getSbeObjectId(), feetX, feetY, feetZ, impactSpeed);
+    }
+
+    /** {@link #splash(EntityType, double, double, double, float)} by SBE object id (the player character). */
+    public static boolean splash(String sbeObjectId, double feetX, double feetY, double feetZ, float impactSpeed) {
         float intensity = Math.clamp(impactSpeed / SPLASH_REFERENCE_SPEED, 0.35f, 1.6f);
-        return play(type, EVENT_SPLASH, feetX, feetY, feetZ, intensity);
+        return play(sbeObjectId, EVENT_SPLASH, feetX, feetY, feetZ, intensity);
     }
 
     /** Custom entity event: a ring spreading on the water surface around a swimmer (Stonebreak#441). */
@@ -99,6 +104,11 @@ public final class EntityFx {
      */
     public static boolean ripple(EntityType type, double x, double surfaceY, double z) {
         return play(type, EVENT_RIPPLE, x, surfaceY, z, AssetFx.NORMAL);
+    }
+
+    /** {@link #ripple(EntityType, double, double, double)} by SBE object id (the player character). */
+    public static boolean ripple(String sbeObjectId, double x, double surfaceY, double z) {
+        return play(sbeObjectId, EVENT_RIPPLE, x, surfaceY, z, AssetFx.NORMAL);
     }
 
     /** {@code event} of a live entity, at its feet. */

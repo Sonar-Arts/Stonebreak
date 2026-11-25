@@ -10,7 +10,6 @@ import com.stonebreak.util.DropUtil;
 import com.stonebreak.world.World;
 import org.joml.Vector3d;
 
-import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.SPAWN_PROTECTION_DURATION;
 import static com.stonebreak.player.PlayerConstants.SPAWN_X;
 import static com.stonebreak.player.PlayerConstants.SPAWN_Y;
@@ -143,7 +142,7 @@ public class DeathHandler {
         System.out.println("Spawn protection enabled - fall damage disabled for " + SPAWN_PROTECTION_DURATION + " seconds");
 
         Vector3d p = state.getPosition();
-        camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+        camera.setPosition(p.x, p.y + com.stonebreak.player.PlayerCharacter.get().eyeHeight(), p.z);
 
         // Ask the server to respawn us (#343): it puts the player at the spawn it picks
         // (PlayerPositionS2C) — this local move is only the prediction.

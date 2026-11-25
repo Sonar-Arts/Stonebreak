@@ -68,7 +68,7 @@ final class VestigeSenses {
         if (!hasVictim) {
             return changed;
         }
-        victimEye.set(victimFeet).add(0f, PlayerLocator.EYE_HEIGHT, 0f);
+        victimEye.set(victimFeet).add(0f, PlayerLocator.eyeHeight(), 0f);
         victimInShade = shade.isShade(victimFeet);
         distance = (float) self.distance(victimFeet);
         head.set(self).add(0f, HEAD_HEIGHT + vestige.renderLift(), 0f);

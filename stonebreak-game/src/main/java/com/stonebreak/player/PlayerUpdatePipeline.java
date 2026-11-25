@@ -7,7 +7,6 @@ import com.stonebreak.world.World;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
 
-import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.RAGE_T2_ATTACK_SPEED_BONUS;
 
 /**
@@ -54,7 +53,7 @@ final class PlayerUpdatePipeline {
         if (!c.flight.isFlying() && !c.spectator.isActive() && !isGroundChunkReady()) {
             state.getVelocity().set(0f, 0f, 0f);
             Vector3d hp = state.getPosition();
-            camera.setPosition(hp.x, hp.y + CAMERA_EYE_OFFSET, hp.z);
+            camera.setPosition(hp.x, hp.y + com.stonebreak.player.PlayerCharacter.get().eyeHeight(), hp.z);
             return;
         }
 
@@ -102,7 +101,7 @@ final class PlayerUpdatePipeline {
         bodyAnimation.update(dt, c.attack.isAttacking(), state.isOnGround(), state.getVelocity(), camera.getFront(),
                 player.getBaseMovementState(), state.isPhysicallyInWater(),
                 com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
-                        com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER.getSbeObjectId()));
+                        com.stonebreak.player.PlayerCharacter.ASSET_ID));
         if (seated) {
             bodyAnimation.getBodyOrientation().seat(player.getRiding().seatYaw());
         }
@@ -185,7 +184,7 @@ final class PlayerUpdatePipeline {
         if (player.getPerspective() == Player.Perspective.THIRD_PERSON) {
             // Pull camera back behind and slightly above the player, but stop short of
             // any solid terrain in the way so it never clips through walls/cliffs.
-            Vector3d pivot = new Vector3d(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+            Vector3d pivot = new Vector3d(p.x, p.y + com.stonebreak.player.PlayerCharacter.get().eyeHeight(), p.z);
             Vector3f offset = new Vector3f(camera.getFront()).mul(-4.0f).add(0f, 0.5f, 0f);
             float desired = offset.length();
             Vector3f dir = offset.normalize(new Vector3f());
@@ -196,7 +195,7 @@ final class PlayerUpdatePipeline {
                     pivot.y + dir.y * dist,
                     pivot.z + dir.z * dist);
         } else {
-            camera.setPosition(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+            camera.setPosition(p.x, p.y + com.stonebreak.player.PlayerCharacter.get().eyeHeight(), p.z);
         }
     }
 

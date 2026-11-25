@@ -280,7 +280,7 @@ public final class MenuShowcase {
             // Into the first-person eye whatever perspective they saved in (play resumes from there).
             resume = new ResumeTransition(from,
                     ResumeTransition.firstPerson(new org.joml.Vector3f(player.getPosition()),
-                            com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET,
+                            com.stonebreak.player.PlayerCharacter.get().eyeHeight(),
                             player.getCamera().getYaw(), player.getCamera().getPitch(), GAMEPLAY_FOV),
                     ResumeTransition.DEFAULT_SECONDS);
             revealed = true; // the menu is going, not coming

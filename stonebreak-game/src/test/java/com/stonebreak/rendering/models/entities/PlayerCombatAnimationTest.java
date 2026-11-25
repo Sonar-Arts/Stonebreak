@@ -33,14 +33,18 @@ class PlayerCombatAnimationTest {
         Map<String, Matrix4f> matrices = new HashMap<>();
         SbePoseSolver.forEachPartMatrix(ASSET.geometryFor("Default"), ASSET,
                 state == null ? null : AnimState.single(state, time), new Matrix4f(), 0f, 0f,
-                (matrix, part) -> matrices.put(part.name(), new Matrix4f(matrix)));
+                // Keyed by joint name: the joint parts became "<joint>_mesh" under their bones (#456 re-rig).
+                (matrix, part) -> matrices.put(part.name().replaceFirst("_mesh$", ""), new Matrix4f(matrix)));
         return matrices;
     }
 
     @Test
     void timingContractMatchesEmbeddedClipsAndEveryTrackBinds() throws IOException {
         assertEquals("stonebreak:Player", ASSET.objectId());
-        var ids = ASSET.geometryFor("Default").parts().stream().map(EntityPart::id).collect(Collectors.toSet());
+        // Clips key the skeleton's BONES since the #456 re-rig.
+        var ids = ASSET.geometryFor("Default").rig().rig().joints().stream()
+                .filter(j -> j.kind() == com.openmason.engine.rig.RigJoint.Kind.BONE)
+                .map(com.openmason.engine.rig.RigJoint::id).collect(Collectors.toSet());
         for (var spec : contract().get("clips")) {
             String state = spec.get("state").asText();
             var clip = ASSET.clipFor(state);
@@ -106,13 +110,15 @@ class PlayerCombatAnimationTest {
         var hit = pose("strike", .38f);
         var fist = hit.get("hand_left").transformPosition(new Vector3f(.221f, .845f, -.012f));
         assertTrue(fist.z < -.45f && fist.y > 1.2f && fist.y < 1.65f, "strike contact: " + fist);
-        var parts = ASSET.geometryFor("Default").parts().stream().collect(Collectors.toMap(EntityPart::name, p -> p));
+        // Finger segments follow their hand through the bone chain hand -> finger -> tip, each mesh on its bone.
+        var rig = ASSET.geometryFor("Default").rig().rig();
         for (String side : List.of("left", "right")) {
             for (String finger : List.of("index", "middle", "ring", "little")) {
-                var proximal = parts.get("finger_" + finger + "_" + side);
-                var distal = parts.get("finger_" + finger + "_tip_" + side);
-                assertEquals(parts.get("hand_" + side).id(), proximal.parentId());
-                assertEquals(proximal.id(), distal.parentId());
+                int proximal = rig.find("finger_" + finger + "_" + side);
+                int distal = rig.find("finger_" + finger + "_tip_" + side);
+                assertEquals(rig.find("hand_" + side), rig.joints().get(proximal).parent());
+                assertEquals(proximal, rig.joints().get(distal).parent());
+                assertEquals(distal, rig.joints().get(rig.find("finger_" + finger + "_tip_" + side + "_mesh")).parent());
             }
         }
     }

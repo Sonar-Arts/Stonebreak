@@ -131,7 +131,7 @@ public class AttachCommand implements ChatCommand {
             return new Target(mob, asset, mob.getType().name().toLowerCase());
         }
         EntityAsset asset = SbeEntityRegistry.get(
-                EntityType.REMOTE_PLAYER.getSbeObjectId());
+                com.stonebreak.player.PlayerCharacter.ASSET_ID);
         if (asset == null) {
             messageManager.addMessage("Player model not loaded", ChatColors.RED);
             return null;
@@ -215,7 +215,7 @@ public class AttachCommand implements ChatCommand {
             java.util.List<String> out = new java.util.ArrayList<>();
             addIfPrefixed(out, "clear", currentArg);
             EntityAsset playerAsset = SbeEntityRegistry.get(
-                    EntityType.REMOTE_PLAYER.getSbeObjectId());
+                    com.stonebreak.player.PlayerCharacter.ASSET_ID);
             EntityGeometry geometry = playerAsset == null ? null
                     : playerAsset.geometryFor(EntityAsset.DEFAULT_VARIANT);
             if (geometry != null) {

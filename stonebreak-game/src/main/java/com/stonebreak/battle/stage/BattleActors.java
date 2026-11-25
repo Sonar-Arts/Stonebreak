@@ -70,7 +70,7 @@ public final class BattleActors {
 
         if (monkPose.presence() > MIN_VISIBLE_PRESENCE) {
             ActorPlacement.Placement at = ActorPlacement.place(layout, CombatantId.MONK, monkPose,
-                    restMinY(EntityType.REMOTE_PLAYER.getSbeObjectId(), EntityAsset.DEFAULT_VARIANT), 1f, false);
+                    restMinY(com.stonebreak.player.PlayerCharacter.ASSET_ID, EntityAsset.DEFAULT_VARIANT), 1f, false);
             // LOCAL_PLAYER attachments: the monk wears the player's own hair and clothing.
             entityRenderer.renderStagedPlayer(monkPose.sbeState(), monkPose.clipTime(), at.position(),
                     at.yawDegrees(), unitScale, view, projection, EntityAttachments.LOCAL_PLAYER);

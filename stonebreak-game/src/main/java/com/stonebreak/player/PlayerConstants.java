@@ -61,7 +61,8 @@ public final class PlayerConstants {
     public static final float SPAWN_Y = 100.0f;
     public static final float SPAWN_Z = 0.0f;
 
-    public static final float CAMERA_EYE_OFFSET = PLAYER_HEIGHT * 0.8f;
+    // The camera / reach / sight eye height is the player character's metric (PlayerCharacter.eyeHeight, #456),
+    // not a fraction of the collision box.
 
     // ── Universal: Dodge ──────────────────────────────────────────────────────
     public static final float DODGE_DASH_DISTANCE          = 3f;    // blocks

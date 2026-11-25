@@ -10,8 +10,10 @@ import java.util.List;
 public final class BattleStageLayouts {
     private BattleStageLayouts() {}
 
-    /** SB_Player.sbe head-to-foot height in blocks. */
-    public static final float MONK_HEIGHT = 1.8f;
+    /** The monk is the player character: its head-to-foot height from the asset (#456). */
+    public static float monkHeight() {
+        return com.stonebreak.player.PlayerCharacter.get().height();
+    }
     /** SB_Ice_Archon.sbe authored height in blocks (asset manifest). */
     public static final float ARCHON_HEIGHT = 2.72f;
     /**
@@ -75,7 +77,7 @@ public final class BattleStageLayouts {
             }
         }
         return new BattleStageLayout(monkMark, archonMark,
-                MONK_HEIGHT, ARCHON_HEIGHT, STRIKE_DISTANCE, RECOIL_DISTANCE, ARENA_RADIUS, floorY, obstacles,
+                monkHeight(), ARCHON_HEIGHT, STRIKE_DISTANCE, RECOIL_DISTANCE, ARENA_RADIUS, floorY, obstacles,
                 ARCHON_STRIKE_DISTANCE, ARCHON_STRIKE_LATERAL);
     }
 }

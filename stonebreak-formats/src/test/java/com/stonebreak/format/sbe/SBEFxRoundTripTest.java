@@ -60,7 +60,7 @@ class SBEFxRoundTripTest {
         assertTrue(new SBESerializer().export(params, omo(), out.toString()));
 
         SBEParser.ParsedSBE parsed = new SBEParser().parse(out);
-        assertEquals("1.6", parsed.document().version());
+        assertEquals(SBEFormat.FORMAT_VERSION, parsed.document().version());
         assertTrue(parsed.document().hasFx());
         assertEquals(FX, parsed.document().fx());
         assertTrue(parsed.document().extensions().isEmpty(), "fx is a core field, never kept as a foreign one");

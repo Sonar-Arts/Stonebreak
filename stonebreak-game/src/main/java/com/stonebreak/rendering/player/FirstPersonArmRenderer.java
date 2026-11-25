@@ -40,7 +40,7 @@ final class FirstPersonArmRenderer {
         var velocity = player.getVelocity();
         boolean moving = player.isOnGround() && velocity.x * velocity.x + velocity.z * velocity.z > 0.25f;
         float gaitDuration = PlayerStateMapping.gaitDuration(player.getBaseMovementState(),
-                SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId()));
+                SbeEntityRegistry.get(com.stonebreak.player.PlayerCharacter.ASSET_ID));
         float gaitPhase = gaitDuration > 0f ? player.getBodyAnimationTime() / gaitDuration : 0f;
         FirstPersonArmPose.worldTransform(view, gaitPhase, moving, worldTransform);
         FirstPersonArmPose.projection(projection, handProjection);

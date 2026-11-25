@@ -931,7 +931,7 @@ public class WorldRenderer {
         org.joml.Vector3d cameraPos = player.getCamera().getPosition();
         org.joml.Vector3d feet = player.getPosition();
         float dx = (float) (cameraPos.x - feet.x);
-        float dy = (float) (cameraPos.y - (feet.y + com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET));
+        float dy = (float) (cameraPos.y - (feet.y + com.stonebreak.player.PlayerCharacter.get().eyeHeight()));
         float dz = (float) (cameraPos.z - feet.z);
         if (dx * dx + dy * dy + dz * dz < PREVIEW_BODY_MIN_EYE_DISTANCE * PREVIEW_BODY_MIN_EYE_DISTANCE) {
             return;

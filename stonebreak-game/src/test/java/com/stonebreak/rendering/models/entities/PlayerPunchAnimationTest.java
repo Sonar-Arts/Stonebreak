@@ -19,7 +19,9 @@ class PlayerPunchAnimationTest {
         var asset = GameSbeAssets.load("/sbe/Mobs/SB_Player.sbe");
         Map<String, Matrix4f> matrices = new HashMap<>();
         SbePoseSolver.forEachPartMatrix(asset.geometryFor("Default"), asset, state,
-                new Matrix4f(), 0f, 0f, (matrix, part) -> matrices.put(part.name(), new Matrix4f(matrix)));
+                // Keyed by joint name: the joint parts became "<joint>_mesh" under their bones (#456 re-rig).
+                new Matrix4f(), 0f, 0f, (matrix, part) -> matrices.put(part.name().replaceFirst("_mesh$", ""),
+                        new Matrix4f(matrix)));
         return matrices;
     }
 

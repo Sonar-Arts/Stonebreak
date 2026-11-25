@@ -54,7 +54,8 @@ public class SBEParser {
             Map<String, byte[]> stateModelBytes,
             Map<String, byte[]> stateClipBytes,
             Map<String, byte[]> variantModelBytes,
-            Map<String, byte[]> soundBytes
+            Map<String, byte[]> soundBytes,
+            byte[] characterBytes
     ) {
         public ParsedSBE {
             stateModelBytes = stateModelBytes == null
@@ -77,6 +78,9 @@ public class SBEParser {
 
         /** Bytes of an embedded sound sample by ZIP entry filename, or null (1.4+). */
         public byte[] soundBytesFor(String filename) { return soundBytes.get(filename); }
+
+        /** The embedded character definition ({@code .omchar} bytes), or null (1.7+). */
+        public byte[] characterBytes() { return characterBytes; }
     }
 
     /**
@@ -179,9 +183,18 @@ public class SBEParser {
             }
         }
 
+        byte[] characterBytes = null;
+        if (document.hasCharacter()) {
+            characterBytes = archive.entries.get(document.character().filename());
+            if (characterBytes == null) {
+                throw new SBEParseException("Missing character entry: " + document.character().filename());
+            }
+            verifyChecksum(document.character().filename(), characterBytes, document.character().checksum());
+        }
+
         logger.info("Parsed SBE: objectId={} states={} variants={}",
                 document.objectId(), document.states().size(), document.variants().size());
-        return new ParsedSBE(document, omoBytes, modelBytes, clipBytes, variantBytes, soundBytes);
+        return new ParsedSBE(document, omoBytes, modelBytes, clipBytes, variantBytes, soundBytes, characterBytes);
     }
 
     /**
@@ -231,6 +244,10 @@ public class SBEParser {
                     if (bytes != null) stateAssets.put(def.filename(), bytes);
                 }
             }
+            if (document.hasCharacter()) {
+                byte[] bytes = archive.entries.get(document.character().filename());
+                if (bytes != null) stateAssets.put(document.character().filename(), bytes);
+            }
 
             return new RawParse(document, omoBytes, stateAssets);
         }
@@ -269,7 +286,7 @@ public class SBEParser {
     /** Top-level manifest fields the SBE format owns; everything else is kept for its owner (#383). */
     static final java.util.Set<String> CORE_FIELDS = java.util.Set.of(
             "version", "objectId", "objectName", "entityType", "objectPack", "checksum", "checksumAlgorithm",
-            "author", "description", "createdAt", "omoFile", "states", "variants", "sounds",
+            "author", "description", "createdAt", "omoFile", "states", "variants", "sounds", "character",
             com.openmason.engine.format.fx.FxJson.FIELD, com.openmason.engine.format.ext.ManifestJson.EXTENSIONS_FIELD);
 
     private SBEFormat.Document readManifest(byte[] manifestBytes) throws IOException {
@@ -307,7 +324,8 @@ public class SBEParser {
                     omoFile, states, variants,
                     SoundJson.read(root),
                     com.openmason.engine.format.fx.FxJson.read(root),
-                    com.openmason.engine.format.ext.ManifestJson.readExtensions(manifestText, CORE_FIELDS)
+                    com.openmason.engine.format.ext.ManifestJson.readExtensions(manifestText, CORE_FIELDS),
+                    parseAssetRef(root.get("character"))
             );
         } catch (NullPointerException e) {
             throw new SBEParseException("Manifest is missing a required field: " + e.getMessage(), e);

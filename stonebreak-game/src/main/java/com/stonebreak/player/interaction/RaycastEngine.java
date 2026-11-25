@@ -15,7 +15,6 @@ import org.joml.Vector3fc;
 import org.joml.Vector3i;
 import java.util.List;
 
-import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.RAY_CAST_DISTANCE;
 
 /**
@@ -65,7 +64,7 @@ public class RaycastEngine {
 
     public Vector3d eyeOrigin() {
         Vector3d p = state.getPosition();
-        return new Vector3d(p.x, p.y + CAMERA_EYE_OFFSET, p.z);
+        return new Vector3d(p.x, p.y + com.stonebreak.player.PlayerCharacter.get().eyeHeight(), p.z);
     }
 
     public Vector3f eyeDirection() {

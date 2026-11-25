@@ -29,7 +29,6 @@ import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.joml.Vector3i;
 
-import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.RAGE_T1_DAMAGE_BONUS;
 import static com.stonebreak.player.PlayerConstants.RAGE_T3_LIFESTEAL_PCT;
 import static com.stonebreak.player.PlayerConstants.SPAWN_X;
@@ -158,7 +157,7 @@ public class Player {
 
     public void setPosition(double x, double y, double z) {
         state.getPosition().set(x, y, z);
-        camera.setPosition(x, y + CAMERA_EYE_OFFSET, z);
+        camera.setPosition(x, y + com.stonebreak.player.PlayerCharacter.get().eyeHeight(), z);
     }
 
     /** Teleport between temporary scenes without carrying a fall arc or a death state across worlds. */

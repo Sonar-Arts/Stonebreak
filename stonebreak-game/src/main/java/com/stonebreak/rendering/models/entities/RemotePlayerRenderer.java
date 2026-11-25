@@ -26,7 +26,6 @@ public final class RemotePlayerRenderer {
 
     private static final int SEGMENTS = 16;
     private static final float RADIUS = 0.3f;
-    private static final float HEIGHT = 1.8f;
 
     private ShaderProgram shader;
     private int vao;
@@ -76,7 +75,8 @@ public final class RemotePlayerRenderer {
     }
 
     private void createCylinderMesh() {
-        // Cylinder centered on origin in XZ; Y from 0 to HEIGHT (feet at y=0).
+        // Cylinder centered on origin in XZ; Y from 0 to the player character's height (feet at y=0; #456).
+        final float HEIGHT = com.stonebreak.player.PlayerCharacter.get().height();
         // Side vertices: 2 per segment (bottom, top).
         // Cap centers at indices [2*SEGMENTS] (bottom) and [2*SEGMENTS+1] (top).
         int sideVerts = SEGMENTS * 2;

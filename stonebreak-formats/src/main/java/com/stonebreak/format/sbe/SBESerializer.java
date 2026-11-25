@@ -83,6 +83,10 @@ public class SBESerializer {
             List<ResolvedState> resolved = resolveStates(params.getStates());
             List<ResolvedVariant> resolvedVariants = resolveVariants(params.getVariants());
             ResolvedSounds resolvedSounds = resolveSoundSpecs(params.getSounds());
+            byte[] characterBytes = params.getCharacterSource() == null ? null
+                    : Files.readAllBytes(params.getCharacterSource());
+            SBEFormat.AssetRef characterRef = characterBytes == null ? null
+                    : new SBEFormat.AssetRef(SBEFormat.CHARACTER_FILENAME, computeChecksum(characterBytes));
 
             List<SBEFormat.StateEntry> stateEntries = new ArrayList<>(resolved.size());
             for (ResolvedState r : resolved) {
@@ -109,10 +113,11 @@ public class SBESerializer {
                     variantEntries,
                     resolvedSounds.data(),
                     params.getFx(),
-                    params.getExtensions()
+                    params.getExtensions(),
+                    characterRef
             );
 
-            writeArchive(outputPath, document, omoBytes, resolved, resolvedVariants, resolvedSounds);
+            writeArchive(outputPath, document, omoBytes, resolved, resolvedVariants, resolvedSounds, characterBytes);
             logger.info("Exported .SBE file: {} (checksum={}, states={}, variants={})",
                     outputPath, checksum.substring(0, 12) + "...",
                     stateEntries.size(), variantEntries.size());
@@ -216,6 +221,16 @@ public class SBESerializer {
             }
 
             ResolvedSounds rebuiltSounds = rebuildSounds(document.sounds(), stateAssetBytes);
+            // The character definition (1.7+) rides in the same filename-keyed map; its checksum is recomputed.
+            byte[] characterBytes = null;
+            SBEFormat.AssetRef characterRef = null;
+            if (document.hasCharacter()) {
+                characterBytes = stateAssetBytes == null ? null : stateAssetBytes.get(document.character().filename());
+                if (characterBytes == null) {
+                    throw new IOException("No bytes for the character entry " + document.character().filename());
+                }
+                characterRef = new SBEFormat.AssetRef(SBEFormat.CHARACTER_FILENAME, computeChecksum(characterBytes));
+            }
 
             SBEFormat.Document finalDoc = new SBEFormat.Document(
                     SBEFormat.FORMAT_VERSION,
@@ -232,10 +247,11 @@ public class SBESerializer {
                     rebuiltVariants,
                     rebuiltSounds.data(),
                     document.fx(),
-                    document.extensions()
+                    document.extensions(),
+                    characterRef
             );
 
-            writeArchive(outputPath, finalDoc, omoBytes, resolved, resolvedVariants, rebuiltSounds);
+            writeArchive(outputPath, finalDoc, omoBytes, resolved, resolvedVariants, rebuiltSounds, characterBytes);
             logger.info("Re-bundled .SBE file: {} ({} states, {} variants)",
                     outputPath, rebuilt.size(), rebuiltVariants.size());
             return true;
@@ -401,13 +417,15 @@ public class SBESerializer {
                               byte[] omoBytes,
                               List<ResolvedState> resolved,
                               List<ResolvedVariant> resolvedVariants,
-                              ResolvedSounds resolvedSounds) throws IOException {
+                              ResolvedSounds resolvedSounds,
+                              byte[] characterBytes) throws IOException {
         Path tempFile = Files.createTempFile("sbe_export_", ".tmp");
         try (FileOutputStream fos = new FileOutputStream(tempFile.toFile());
              ZipOutputStream zos = new ZipOutputStream(fos)) {
 
             writeManifest(zos, document);
             writeEntry(zos, SBEFormat.EMBEDDED_OMO_FILENAME, omoBytes);
+            if (characterBytes != null) writeEntry(zos, SBEFormat.CHARACTER_FILENAME, characterBytes);
 
             for (ResolvedState r : resolved) {
                 if (r.hasModel()) writeEntry(zos, r.modelFilename, r.modelBytes);
@@ -622,6 +640,9 @@ public class SBESerializer {
         /** FX bindings (1.6+); left out of the manifest when there are none. */
         @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         public com.fasterxml.jackson.databind.JsonNode fx;
+        /** The embedded character definition (1.7+); left out when there is none. */
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        public AssetRefDTO character;
 
         public ManifestDTO(SBEFormat.Document doc) {
             this.version = doc.version();
@@ -645,6 +666,7 @@ public class SBESerializer {
             }
             this.sounds = SoundJson.toDto(doc.sounds());
             this.fx = com.openmason.engine.format.fx.FxJson.toJson(doc.fx());
+            this.character = doc.hasCharacter() ? new AssetRefDTO(doc.character()) : null;
         }
     }
 

@@ -21,12 +21,12 @@ final class PlayerWaterEffects {
     void update(float dt, PhysicsState state, boolean eyesSubmerged) {
         org.joml.Vector3d feet = state.getPosition();
         if (state.justEnteredWaterThisFrame()) {
-            swimFx.enteredWater(EntityType.REMOTE_PLAYER, Game.getWorld(), feet,
+            swimFx.enteredWater(com.stonebreak.player.PlayerCharacter.ASSET_ID, PlayerConstants.PLAYER_HEIGHT, Game.getWorld(), feet,
                     Math.max(0f, -state.getVelocity().y));
         }
         Vector3f vel = state.getVelocity();
         float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-        swimFx.update(dt, EntityType.REMOTE_PLAYER, Game.getWorld(), feet,
+        swimFx.update(dt, com.stonebreak.player.PlayerCharacter.ASSET_ID, PlayerConstants.PLAYER_HEIGHT, Game.getWorld(), feet,
                 state.isPhysicallyInWater(), eyesSubmerged, horizSpeed);
     }
 }

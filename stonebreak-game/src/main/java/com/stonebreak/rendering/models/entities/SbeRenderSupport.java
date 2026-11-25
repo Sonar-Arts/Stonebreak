@@ -49,6 +49,6 @@ final class SbeRenderSupport {
     /** The shared player SBE asset (remote players, decoys, local third-person), or null. */
     static EntityAsset playerAsset() {
         return com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
-                com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER.getSbeObjectId());
+                com.stonebreak.player.PlayerCharacter.ASSET_ID);
     }
 }

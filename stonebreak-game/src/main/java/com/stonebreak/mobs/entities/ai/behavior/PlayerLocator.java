@@ -160,8 +160,10 @@ public interface PlayerLocator {
     /** Height above a player's feet that ranged attackers aim at and sight on. */
     float CHEST_HEIGHT = 1.1f;
 
-    /** Height above a player's feet that they see from. */
-    float EYE_HEIGHT = com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
+    /** Height above a player's feet that they see from: the player character's eye height (#456). */
+    static float eyeHeight() {
+        return com.stonebreak.player.PlayerCharacter.get().eyeHeight();
+    }
 
     /** Nobody to react to; for tests and for worlds with no players. */
     PlayerLocator NONE = (from, out) -> null;

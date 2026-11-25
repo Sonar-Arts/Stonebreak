@@ -10,7 +10,6 @@ import com.stonebreak.world.operations.WorldConfiguration;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
 
-import static com.stonebreak.player.PlayerConstants.CAMERA_EYE_OFFSET;
 import static com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT;
 import static com.stonebreak.player.PlayerConstants.PLAYER_WIDTH;
 import static com.stonebreak.player.PlayerConstants.WATER_EXIT_ANTI_FLOAT_DURATION;
@@ -153,7 +152,7 @@ public class SwimmingController {
     public boolean isInWater() {
         Vector3d p = state.getPosition();
         long eyeX = (long) Math.floor(p.x);
-        long eyeY = (long) Math.floor(p.y + CAMERA_EYE_OFFSET);
+        long eyeY = (long) Math.floor(p.y + com.stonebreak.player.PlayerCharacter.get().eyeHeight());
         long eyeZ = (long) Math.floor(p.z);
         return world.getBlockAt(eyeX, eyeY, eyeZ) == BlockType.WATER;
     }

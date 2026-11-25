@@ -83,7 +83,7 @@ public final class CombatRules {
     /** True when the target's box is within melee reach of the player's eye at {@code (px,py,pz)} (feet). */
     public static boolean withinMeleeReach(double px, double py, double pz, Entity.BoundingBox box) {
         double ex = px;
-        double ey = py + CAMERA_EYE_OFFSET;
+        double ey = py + com.stonebreak.player.PlayerCharacter.get().eyeHeight();
         double ez = pz;
         double dx = Math.max(0.0, Math.max(box.minX - ex, ex - box.maxX));
         double dy = Math.max(0.0, Math.max(box.minY - ey, ey - box.maxY));

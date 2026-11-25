@@ -803,9 +803,9 @@ public class Main {
             com.stonebreak.fx.bindings.BlockFx.breakAt(blocks[i], x, y, z);
         }
         com.stonebreak.fx.bindings.BlockFx.stepAt(com.stonebreak.blocks.BlockType.DIRT,
-                eye.x + front.x * 3 - right.x * 1.2f, eye.y - 1.6f, eye.z + front.z * 3 - right.z * 1.2f);
-        com.stonebreak.fx.bindings.EntityFx.splash(com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER,
-                eye.x + front.x * 3 + right.x * 1.5f, eye.y - 1.6, eye.z + front.z * 3 + right.z * 1.5f, 9f);
+                eye.x + front.x * 3 - right.x * 1.2f, eye.y - com.stonebreak.player.PlayerCharacter.get().eyeHeight(), eye.z + front.z * 3 - right.z * 1.2f);
+        com.stonebreak.fx.bindings.EntityFx.splash(com.stonebreak.player.PlayerCharacter.ASSET_ID,
+                eye.x + front.x * 3 + right.x * 1.5f, eye.y - com.stonebreak.player.PlayerCharacter.get().eyeHeight(), eye.z + front.z * 3 + right.z * 1.5f, 9f);
         com.stonebreak.fx.FxRuntime rt = com.stonebreak.fx.Fx.installed();
         if (rt != null) {
             System.out.printf("[autofx] live=%d instances=%d sim=%.3fms enabled=%s%n", rt.liveParticles(),
@@ -851,7 +851,7 @@ public class Main {
         for (int i = 0; i < 2; i++) {
             double rx = eye.x + front.x * (5f + i * 1.5f) + right.x * (1.5f + i * 0.8f);
             double rz = eye.z + front.z * (5f + i * 1.5f) + right.z * (1.5f + i * 0.8f);
-            com.stonebreak.fx.bindings.EntityFx.ripple(com.stonebreak.mobs.entities.EntityType.REMOTE_PLAYER,
+            com.stonebreak.fx.bindings.EntityFx.ripple(com.stonebreak.player.PlayerCharacter.ASSET_ID,
                     rx, autoFxSurface(rx, eye.y, rz), rz);
         }
         com.stonebreak.fx.FxRuntime rt = com.stonebreak.fx.Fx.installed();

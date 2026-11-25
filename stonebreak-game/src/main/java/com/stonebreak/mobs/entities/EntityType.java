@@ -81,13 +81,18 @@ public enum EntityType {
     ITEM_DROP("Item Drop", 1.0f, 0.0f, 0.25f, 0.25f, 0.25f, 0.0f, false, null),
 
     // Remote (multiplayer) player; rendered via the SB_Player.sbe asset.
-    // height = 1.8 (head-to-foot), width/length = 0.6, no separate legs (legHeight=0).
-    REMOTE_PLAYER("Remote Player", 20.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true, "stonebreak:Player",
+    // The collision box is the player's gameplay box (PlayerConstants), no separate legs (legHeight=0);
+    // the asset is the player character (#456).
+    REMOTE_PLAYER("Remote Player", 20.0f, 0.0f, com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT,
+        com.stonebreak.player.PlayerConstants.PLAYER_WIDTH, com.stonebreak.player.PlayerConstants.PLAYER_WIDTH, 0.0f,
+        true, com.stonebreak.player.PlayerCharacter.ASSET_ID,
         "Varies", "Varies"),
 
     // Illusionist Mirrored Deceit decoy; player-shaped, 1 HP so any hit kills it.
     // Same dimensions as REMOTE_PLAYER and rendered through the same cylinder path.
-    ILLUSION_DECOY("Illusion Decoy", 1.0f, 0.0f, 1.8f, 0.6f, 0.6f, 0.0f, true, null),
+    ILLUSION_DECOY("Illusion Decoy", 1.0f, 0.0f, com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT,
+        com.stonebreak.player.PlayerConstants.PLAYER_WIDTH, com.stonebreak.player.PlayerConstants.PLAYER_WIDTH, 0.0f,
+        true, null),
 
     // Projectile entities
     FIRE_BOLT("Fire Bolt", 1.0f, 0.0f, 0.3f, 0.3f, 0.3f, 0.0f, false, null),

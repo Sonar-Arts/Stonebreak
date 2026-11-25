@@ -235,13 +235,13 @@ public class RemotePlayer extends LivingEntity {
                         || PlayerStateFlags.has(flags, PlayerStateFlags.SWIMMING),
                 PlayerStateFlags.has(flags, PlayerStateFlags.SPRINTING));
         boolean contact = gaitClock.update(deltaTime, PlayerStateMapping.gaitDuration(movementState,
-                SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId())));
+                SbeEntityRegistry.get(com.stonebreak.player.PlayerCharacter.ASSET_ID)));
         // Same gate as the local player's steps (PlayerBodyAnimation): on land, out of water.
         footContact = contact && !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE)
                 && !PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER);
 
         attackAnimation.update(deltaTime, PlayerStateFlags.has(flags, PlayerStateFlags.ATTACKING),
-                SbeEntityRegistry.get(EntityType.REMOTE_PLAYER.getSbeObjectId()));
+                SbeEntityRegistry.get(com.stonebreak.player.PlayerCharacter.ASSET_ID));
 
         clipClock.advance(deltaTime, 0.0f);
     }
@@ -270,7 +270,7 @@ public class RemotePlayer extends LivingEntity {
                 wasPartiallyInWaterLastFrame = partiallyInWater;
             }
         } else if (partiallyInWater && !wasPartiallyInWaterLastFrame && deltaTime > 0f) {
-            swimFx.enteredWater(EntityType.REMOTE_PLAYER, world, position, Math.max(0f, -dy / deltaTime));
+            swimFx.enteredWater(com.stonebreak.player.PlayerCharacter.ASSET_ID, com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT, world, position, Math.max(0f, -dy / deltaTime));
         }
         if (waterStateInitialized) {
             wasPartiallyInWaterLastFrame = partiallyInWater;
@@ -278,7 +278,7 @@ public class RemotePlayer extends LivingEntity {
 
         // Surface ripples while touching water but not submerged, same as the local player.
         float horizSpeed = deltaTime > 0f ? (float) Math.sqrt(dx * dx + dz * dz) / deltaTime : 0f;
-        swimFx.update(deltaTime, EntityType.REMOTE_PLAYER, world, position, partiallyInWater, eyesInWater, horizSpeed);
+        swimFx.update(deltaTime, com.stonebreak.player.PlayerCharacter.ASSET_ID, com.stonebreak.player.PlayerConstants.PLAYER_HEIGHT, world, position, partiallyInWater, eyesInWater, horizSpeed);
     }
 
     @Override
@@ -311,7 +311,7 @@ public class RemotePlayer extends LivingEntity {
 
     /** Decoys too are drawn with the player model, turned to the body yaw. */
     @Override
-    protected String modelObjectId() { return EntityType.REMOTE_PLAYER.getSbeObjectId(); }
+    protected String modelObjectId() { return com.stonebreak.player.PlayerCharacter.ASSET_ID; }
 
     @Override
     protected float modelYaw() { return getBodyYaw(); }

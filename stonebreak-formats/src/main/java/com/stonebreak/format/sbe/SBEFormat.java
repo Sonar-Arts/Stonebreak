@@ -48,12 +48,19 @@ import java.util.Objects;
  *       {@code entityType} is a free-form name (the engine's MOB/NPC/... enum moved to the game).</li>
  *   <li>1.6 - Optional {@code fx[]} block (#103, shared with SBO 1.12, see
  *       {@link com.openmason.engine.format.fx.FxData}): which FX play on which events.</li>
+ *   <li>1.7 - Optional {@code character} {file, checksum} (Stonebreak #456): an embedded
+ *       {@code character.omchar} (Open Mason #153 character definition: roles, reference pose, limits,
+ *       chains, sockets, metrics) for character and creature types, handed to the engine importer with
+ *       the model. 1.6 readers ignore the field and the entry.</li>
  * </ul>
  */
 public final class SBEFormat {
 
     /** Current format version */
-    public static final String FORMAT_VERSION = "1.6";
+    public static final String FORMAT_VERSION = "1.7";
+
+    /** ZIP entry of the embedded character definition (1.7+). */
+    public static final String CHARACTER_FILENAME = "character.omchar";
 
     /** File extension for SBE files */
     public static final String FILE_EXTENSION = ".sbe";
@@ -254,6 +261,7 @@ public final class SBEFormat {
      * @param fx           optional FX bindings (1.6+): event name → FX id; {@code null}
      *                     means the entity declares none.
      * @param extensions   namespaced game data (1.5+) and foreign top-level fields; never null
+     * @param character    the embedded {@code .omchar} (1.7+), or {@code null} when the entity has none
      */
     public record Document(
             String version,
@@ -270,8 +278,20 @@ public final class SBEFormat {
             List<VariantEntry> variants,
             com.openmason.engine.format.sound.SoundData sounds,
             com.openmason.engine.format.fx.FxData fx,
-            com.openmason.engine.format.ext.FormatExtensions extensions
+            com.openmason.engine.format.ext.FormatExtensions extensions,
+            AssetRef character
     ) {
+        /** A document without a character definition (the pre-1.7 shape). */
+        public Document(String version, String objectId, String objectName, String entityType, String objectPack,
+                        String checksum, String author, String description, String createdAt, String omoFilename,
+                        List<StateEntry> states, List<VariantEntry> variants,
+                        com.openmason.engine.format.sound.SoundData sounds,
+                        com.openmason.engine.format.fx.FxData fx,
+                        com.openmason.engine.format.ext.FormatExtensions extensions) {
+            this(version, objectId, objectName, entityType, objectPack, checksum, author, description, createdAt,
+                    omoFilename, states, variants, sounds, fx, extensions, null);
+        }
+
         /** A document without FX bindings (the pre-1.6 shape). */
         public Document(String version, String objectId, String objectName, String entityType, String objectPack,
                         String checksum, String author, String description, String createdAt, String omoFilename,
@@ -303,20 +323,29 @@ public final class SBEFormat {
         /** Copy with {@code entityType} replaced (#431: the entity-type picker is a game section). */
         public Document withEntityType(String value) {
             return new Document(version, objectId, objectName, value, objectPack, checksum, author,
-                    description, createdAt, omoFilename, states, variants, sounds, fx, extensions);
+                    description, createdAt, omoFilename, states, variants, sounds, fx, extensions, character);
         }
 
         /** Copy with the extensions (and foreign legacy fields) replaced. */
         public Document withExtensions(com.openmason.engine.format.ext.FormatExtensions value) {
             return new Document(version, objectId, objectName, entityType, objectPack, checksum, author,
-                    description, createdAt, omoFilename, states, variants, sounds, fx, value);
+                    description, createdAt, omoFilename, states, variants, sounds, fx, value, character);
         }
 
         /** Copy with the FX bindings replaced (null = none). */
         public Document withFx(com.openmason.engine.format.fx.FxData value) {
             return new Document(version, objectId, objectName, entityType, objectPack, checksum, author,
-                    description, createdAt, omoFilename, states, variants, sounds, value, extensions);
+                    description, createdAt, omoFilename, states, variants, sounds, value, extensions, character);
         }
+
+        /** Copy with the character definition reference replaced (null = none; 1.7+). */
+        public Document withCharacter(AssetRef value) {
+            return new Document(version, objectId, objectName, entityType, objectPack, checksum, author,
+                    description, createdAt, omoFilename, states, variants, sounds, fx, extensions, value);
+        }
+
+        /** True when this SBE embeds a character definition (1.7+). */
+        public boolean hasCharacter() { return character != null; }
 
         /** The typed extension {@code codec} reads. */
         public <T> java.util.Optional<T> extension(com.openmason.engine.format.ext.FormatExtensionCodec<T> codec) {
@@ -378,6 +407,11 @@ public final class SBEFormat {
         private final List<VariantBinding> variants = new ArrayList<>();
         private final List<com.openmason.engine.format.sound.SoundSpec> sounds = new ArrayList<>();
         private com.openmason.engine.format.fx.FxData fx;
+        private Path characterSource;
+
+        /** An .omchar on disk embedded as {@link #CHARACTER_FILENAME} (1.7+); null = none. */
+        public Path getCharacterSource() { return characterSource; }
+        public void setCharacterSource(Path characterSource) { this.characterSource = characterSource; }
 
         /** FX bindings written into the new file (1.6+); null = none. */
         public com.openmason.engine.format.fx.FxData getFx() { return fx; }
