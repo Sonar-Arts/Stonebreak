@@ -53,4 +53,25 @@ class WeatherAudioTest {
         assertEquals(0f, WeatherAudio.rainHeard(CloudColumn.CLEAR, 64f));
         assertEquals(0f, WeatherAudio.rainHeard(CloudColumn.CLEAR, -10f));
     }
+
+    @Test
+    void rainIsMuffledUnderARoofAndGoneDeepUnderground() {
+        assertEquals(1f, WeatherAudio.rainShelter(0.0), "open sky");
+        assertEquals(1f, WeatherAudio.rainShelter(1.0), "a block of cover is still open");
+        assertEquals(WeatherAudio.ROOFED, WeatherAudio.rainShelter(3.0), "a roof");
+        assertEquals(WeatherAudio.ROOFED, WeatherAudio.rainShelter(WeatherAudio.ROOF_DEPTH));
+        float mid = WeatherAudio.rainShelter((WeatherAudio.ROOF_DEPTH + WeatherAudio.RAIN_SILENT_DEPTH) / 2);
+        assertEquals(WeatherAudio.ROOFED / 2f, mid, 1e-6f, "fading with depth");
+        assertEquals(0f, WeatherAudio.rainShelter(WeatherAudio.RAIN_SILENT_DEPTH));
+        assertEquals(0f, WeatherAudio.rainShelter(200.0), "deep underground");
+    }
+
+    @Test
+    void thunderCarriesFurtherDownButNotForever() {
+        assertEquals(1f, WeatherAudio.thunderShelter(0.0));
+        assertEquals(1f, WeatherAudio.thunderShelter(WeatherAudio.ROOF_DEPTH), "a roof does not dull thunder");
+        assertTrue(WeatherAudio.thunderShelter(WeatherAudio.RAIN_SILENT_DEPTH) > 0f, "heard where rain is not");
+        assertEquals(0f, WeatherAudio.thunderShelter(WeatherAudio.THUNDER_SILENT_DEPTH));
+        assertEquals(0f, WeatherAudio.thunderShelter(200.0));
+    }
 }

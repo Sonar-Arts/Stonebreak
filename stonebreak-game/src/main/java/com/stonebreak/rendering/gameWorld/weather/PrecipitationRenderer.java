@@ -86,6 +86,8 @@ public final class PrecipitationRenderer {
     private static final int GROUND_SIZE = 2 * (int) NEAR.radius + 3;
     /** Ground written where the chunk isn't loaded: below anything, so the lane stops at {@link Ring#below}. */
     private static final float GROUND_UNKNOWN = -1e6f;
+    /** Blocks of world over the eye beyond which the camera counts as under ground, not under a roof. */
+    static final double BURIED_COVER = 8.0;
     /** Clear of the cloud field's units (10, 15-17) and the cloud passes' (11-14). */
     private static final int GROUND_TEXTURE_UNIT = 18;
     /** The ring's lane answers, read by the draw; clear of every unit above. */
@@ -187,6 +189,13 @@ public final class PrecipitationRenderer {
             glBindTexture(GL_TEXTURE_2D, groundTexture); // the far ring never reads it: no upload
         }
         RenderOrigin.toRender(cameraWorldPos, renderCamera);
+        // Under ground (more than a roof over the eye) the far lanes stop at the relief rather than reaching down
+        // to the camera: they would otherwise hang in any cave big enough for the depth test to miss them.
+        // They also never end below the surface over the camera (where a relief tile is not ready yet it reads flat
+        // at y 0, which would let them fall into any cave above that).
+        double cover = WeatherSurface.coverAround(world, cameraWorldPos.x(), cameraWorldPos.y(), cameraWorldPos.z());
+        boolean buried = cover > BURIED_COVER;
+        float buriedFloor = buried ? renderCamera.y + (float) cover : -1.0e9f;
 
         // Pass 1: what each lane of each ring sees above it.
         glDisable(GL_DEPTH_TEST);
@@ -207,6 +216,8 @@ public final class PrecipitationRenderer {
             fieldShader.setFloat("uInnerRadius", ring.inner());
             fieldShader.setFloat("uBelow", ring.below());
             fieldShader.setBool("uFar", ring.far());
+            fieldShader.setBool("uCameraBuried", buried);
+            fieldShader.setFloat("uBuriedFloor", buriedFloor);
             quad.draw();
         }
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, previousFbo);
@@ -272,7 +283,7 @@ public final class PrecipitationRenderer {
         ground.clear();
         for (int j = 0; j < GROUND_SIZE; j++) {
             for (int i = 0; i < GROUND_SIZE; i++) {
-                int y = WeatherSurface.groundY(world, x0 + i, z0 + j);
+                int y = WeatherSurface.estimatedGroundY(world, x0 + i, z0 + j); // caves under LOD ground stay dry
                 ground.put(y == WeatherSurface.UNKNOWN ? GROUND_UNKNOWN : y)
                         .put(WeatherSurface.isSnow(world, x0 + i, z0 + j) ? 1f : 0f);
             }

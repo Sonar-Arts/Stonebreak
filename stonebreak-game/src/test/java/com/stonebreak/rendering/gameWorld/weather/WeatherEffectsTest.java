@@ -39,4 +39,14 @@ class WeatherEffectsTest {
             previous = rain;
         }
     }
+
+    @Test
+    void rainFogStaysOutOfCaves() {
+        assertEquals(1f, WeatherEffects.openness(0.0), "open sky");
+        assertEquals(1f, WeatherEffects.openness(WeatherEffects.FOG_COVER_FROM), "a roof");
+        assertEquals(0.5f, WeatherEffects.openness((WeatherEffects.FOG_COVER_FROM + WeatherEffects.FOG_COVER_TO) / 2),
+                1e-6f);
+        assertEquals(0f, WeatherEffects.openness(WeatherEffects.FOG_COVER_TO));
+        assertEquals(0f, WeatherEffects.openness(60.0), "deep cave");
+    }
 }

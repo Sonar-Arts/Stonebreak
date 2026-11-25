@@ -10,9 +10,12 @@ import org.joml.Vector3dc;
 
 /**
  * The sound of the weather at the listener: a rain loop that swells under
- * raining cloud, falls silent in snow, above the cloud and inside it, and
- * muffles under a roof; and thunder, arriving as late after each lightning
- * flash as sound takes to travel.
+ * raining cloud, falls silent in snow, above the cloud and inside it, muffles
+ * under a roof and dies away with depth under ground; and thunder, arriving as
+ * late after each lightning flash as sound takes to travel, fading out deeper
+ * down. Depth is the world above the ear around it ({@link WeatherSurface#coverAround}),
+ * known or estimated, so a cave under unloaded (LOD-only) ground or under a
+ * skylight is still underground.
  * Thunder is played 2D — the engine's positional sources fade out within
  * 50 blocks, and thunder must carry for over a kilometre.
  */
@@ -24,7 +27,13 @@ public final class WeatherAudio {
     /** Loop volume at the heaviest rain. */
     private static final float RAIN_VOLUME = 0.7f;
     /** Share of the rain heard with a roof overhead. */
-    private static final float ROOFED = 0.3f;
+    static final float ROOFED = 0.3f;
+    /** Blocks of cover over the ear that are only a roof: the rain is muffled ({@link #ROOFED}), not fading. */
+    static final double ROOF_DEPTH = 8.0;
+    /** Blocks of cover at which the rain is no longer heard at all. */
+    static final double RAIN_SILENT_DEPTH = 24.0;
+    /** Blocks of cover at which thunder, which carries through rock as a rumble, is no longer heard. */
+    static final double THUNDER_SILENT_DEPTH = 48.0;
     /** Time constant of the swell, seconds. */
     private static final float RESPONSE_SECONDS = 2.5f;
     /** Spacing of the samples averaged around the listener: rain is heard from all around. */
@@ -49,6 +58,8 @@ public final class WeatherAudio {
     private final DelayedSoundQueue pendingThunder = new DelayedSoundQueue(THUNDER_MERGE_SECONDS);
     private double lastSeconds = Double.NaN;
     private float level;
+    /** Blocks of world over the ear this tick (0 = open sky, or no world). */
+    private double cover;
 
     /** Registers the weather sounds; call once while the sound system boots. */
     public static void load(SoundSystem sounds) {
@@ -60,12 +71,14 @@ public final class WeatherAudio {
     /** Call every game tick; a null weather or a null/closed world (no session, world switch) fades the rain out. */
     public void update(ClientWeather weather, World world, Vector3dc ear, float deltaSeconds) {
         float target = 0f;
+        cover = 0.0;
         if (weather != null && world != null && !world.isClosed()) {
-            int x = (int) Math.floor(ear.x()), z = (int) Math.floor(ear.z());
-            if (!WeatherSurface.isSnow(world, x, z)) {
-                int ground = WeatherSurface.groundY(world, x, z);
-                boolean roofed = ground != WeatherSurface.UNKNOWN && ground > ear.y() + 1;
-                target = precipitationAround(weather, ear) * (roofed ? ROOFED : 1f);
+            long x = (long) Math.floor(ear.x()), z = (long) Math.floor(ear.z());
+            // The median over the columns around the ear: a cave under a skylight is still a cave.
+            cover = WeatherSurface.coverAround(world, ear.x(), ear.y(), ear.z());
+            float shelter = rainShelter(cover);
+            if (shelter > 0f && !WeatherSurface.isSnow(world, x, z)) {
+                target = precipitationAround(weather, ear) * shelter;
             }
         }
         level += (target - level) * (1f - (float) Math.exp(-Math.max(0f, deltaSeconds) / RESPONSE_SECONDS));
@@ -104,6 +117,25 @@ public final class WeatherAudio {
         return rain * (silentAt - earY) / (silentAt - base);
     }
 
+    /**
+     * Share of the rain heard under {@code cover} blocks of world: all of it in the open (a block of cover
+     * or less), {@link #ROOFED} under a roof, fading to none at {@link #RAIN_SILENT_DEPTH}.
+     */
+    static float rainShelter(double cover) {
+        if (cover <= 1.0) return 1f;
+        return ROOFED * fadeOut(cover, ROOF_DEPTH, RAIN_SILENT_DEPTH);
+    }
+
+    /** Share of thunder heard under {@code cover} blocks: all of it under a roof, fading to none at {@link #THUNDER_SILENT_DEPTH}. */
+    static float thunderShelter(double cover) {
+        return fadeOut(cover, ROOF_DEPTH, THUNDER_SILENT_DEPTH);
+    }
+
+    /** 1 up to {@code from}, falling linearly to 0 at {@code to}. */
+    private static float fadeOut(double x, double from, double to) {
+        return (float) Math.clamp((to - x) / (to - from), 0.0, 1.0);
+    }
+
     /** Queues thunder for each new strike, delayed by distance, and plays what is due. */
     private void updateThunder(ClientWeather weather, Vector3dc ear) {
         if (weather == null) {
@@ -112,10 +144,11 @@ public final class WeatherAudio {
             return;
         }
         double now = weather.seconds();
-        if (!Double.isNaN(lastSeconds)) {
+        float shelter = thunderShelter(cover);
+        if (!Double.isNaN(lastSeconds) && shelter > 0f) {
             for (var strike : weather.strikesBetween(lastSeconds, now, ear.x(), ear.z(), THUNDER_RANGE)) {
                 double d = Math.hypot(strike.x() - ear.x(), strike.z() - ear.z());
-                float volume = (float) (1.0 / (1.0 + d / THUNDER_HALF_DISTANCE));
+                float volume = shelter * (float) (1.0 / (1.0 + d / THUNDER_HALF_DISTANCE));
                 // Far thunder rumbles lower.
                 float pitch = (float) (1.0 - 0.25 * Math.min(1.0, d / THUNDER_RANGE));
                 pendingThunder.schedule(DelayedSoundQueue.arrival(strike.seconds(), d),
