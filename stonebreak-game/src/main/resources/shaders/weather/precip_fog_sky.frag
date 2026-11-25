@@ -5,6 +5,7 @@
 // Blend (ONE, SRC_ALPHA): sky * transmittance + fog light.
 
 #include "/shaders/weather/precip_fog.glsl"
+#include "/shaders/world/dither.glsl"
 
 in vec2 vUv;
 out vec4 fragColor;
@@ -16,4 +17,7 @@ void main() {
     vec4 far = u_invViewProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
     vec3 rd = normalize(far.xyz / far.w - u_camPos);
     fragColor = precipFog(u_camPos, rd, 1e9);
+    // The sky under the fog was dithered, but only alpha of it shows through:
+    // the fog's own gradient gets the rest, so a dark veil does not band.
+    fragColor.rgb += ditherTpdf(gl_FragCoord.xy) * (1.0 - fragColor.a);
 }

@@ -9,6 +9,8 @@
 // pixel's own. A plain filter spread cloud-free texels off a block's silhouette
 // onto the sky beside it, which drew a clear rim around every block.
 
+#include "/shaders/world/dither.glsl"
+
 in vec2 vUv;
 out vec4 fragColor;
 
@@ -84,4 +86,7 @@ void main() {
     // No texel marched to this pixel's depth (a sliver thinner than a cloud
     // texel): the closest match is still better than none.
     fragColor = weight > 1e-4 ? sum / weight : nearest;
+    // Night cloud is a dark gradient over a dithered sky that shows through
+    // only by the transmittance: dither the cloud's share (dither.glsl).
+    fragColor.rgb += ditherTpdf(gl_FragCoord.xy) * (1.0 - fragColor.a);
 }
