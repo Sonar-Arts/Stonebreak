@@ -75,6 +75,7 @@ public final class CloudRenderer {
     private final CloudNoiseTextures noise = new CloudNoiseTextures();
     private final CloudSiteCache siteCache = new CloudSiteCache();
     private final CloudUniforms uniforms = new CloudUniforms();
+    private final CloudSunlightTexture sunlight = new CloudSunlightTexture();
     private final SceneDepthCopy sceneDepth = new SceneDepthCopy();
     private final FullscreenQuad quad = new FullscreenQuad();
     private final ShaderProgram marchShader;
@@ -100,10 +101,12 @@ public final class CloudRenderer {
     private static final Vector3f DEFAULT_SUN = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
     /** Daytime storm grey the deck's sky light dims toward (the old clouds' night tint). */
     private static final Vector3f STORM_TINT = new Vector3f(0.16f, 0.17f, 0.24f);
-    /** Night sky light on the cloud as a share of the horizon's colour. */
+    /** Night sky light on the cloud as a share of the sky's colour behind it. */
     static final float NIGHT_SHARE = 0.9f;
     /** Moonlight on the deck relative to the key light it casts on the ground. */
     private static final float MOONLIT_CLOUD = 0.3f;
+    /** The overhead sun's light on the cloud, before the march's own exposure curve. */
+    private static final float SUN_ON_CLOUD = 0.85f;
     private final Vector3f ambientColor = new Vector3f();
     private final Vector3f ambientClear = new Vector3f();
     private final int[] viewportBuf = new int[4];
@@ -255,12 +258,28 @@ public final class CloudRenderer {
         marchShader.setMat4("u_invViewProj", invViewProj.set(projection).mul(view).invert());
         marchShader.setVec3("u_camPos", renderCameraPos);
         marchShader.setInt("u_frame", frame++);
-        // The key light: the sun, or the moon at night, which lines the deck in silver.
-        Vector3f keyDirection = sky != null ? sky.keyDir() : DEFAULT_SUN;
+        // The key light: the sun for as long as it lights the highest cloud, which is a
+        // little after it has set on the ground (CloudSunlight), and then the moon, which
+        // lines the deck in silver. Each sample takes the light at its own height.
+        Vector3f sunTrue = sky != null ? sky.sunDir() : DEFAULT_SUN;
+        boolean sunIsKey = sky == null || CloudSunlight.sunLightsHighestCloud(sunTrue.y);
+        Vector3f keyDirection = sunIsKey ? sunTrue : sky.keyDir();
+        float[] table = sunlight.table();
+        if (sunIsKey) {
+            CloudSunlight.bake(sunTrue.y, CloudSunlight.TAU, SUN_ON_CLOUD, table);
+        } else {
+            CloudSunlight.fill(sunColor.set(sky.keyLight()).mul(MOONLIT_CLOUD), table);
+        }
+        sunlight.upload();
+        int previousSunlight = sunlight.bind();
+        marchShader.setInt("u_keyLightLut", CloudSunlightTexture.TEXTURE_UNIT);
+        marchShader.setFloat("u_keyLutBottom", CloudSunlight.tableBottom());
+        marchShader.setFloat("u_keyLutTop", CloudSunlight.tableTop());
         marchShader.setVec3("u_sunDir", keyDirection);
-        marchShader.setVec3("u_sunColor", sky != null && sky.keyIsMoon()
-                ? sunColor.set(sky.keyLight()).mul(MOONLIT_CLOUD)
-                : sunColor(sky, keyDirection));
+        // The light the cirrus gets, the last to lose the sun: the golden-hour fall-off reads
+        // its warmth from it.
+        int last = 3 * (CloudSunlight.TEXELS - 1);
+        marchShader.setVec3("u_sunColor", sunColor.set(table[last], table[last + 1], table[last + 2]));
         marchShader.setVec3("u_ambientColor", ambientColor(sky, skyColor, ambientLight, ambientColor));
         marchShader.setVec3("u_ambientClear", ambientColor(sky, clearSkyColor, ambientLight, ambientClear));
         marchShader.setVec3("u_hazeColor", clearSkyColor);
@@ -277,6 +296,7 @@ public final class CloudRenderer {
         }
         quad.draw();
         siteCache.unbind();
+        sunlight.unbind(previousSunlight);
 
         // Pass 2: blend into the reprojected history. Camera-relative, so a
         // render-origin rebase between frames doesn't break the reprojection.
@@ -378,25 +398,23 @@ public final class CloudRenderer {
         return drawnThisFrame && target != null ? target.getExtraColorTexture() : 0;
     }
 
-    /** Sunlight's hue ({@link SkyLight#sunColor()}), dim near the horizon and gone below it. */
-    private Vector3f sunColor(SkyLight sky, Vector3f sun) {
-        float strength = smoothstep(-0.05f, 0.12f, sun.y) * 0.85f;
-        return sky != null ? sunColor.set(sky.sunColor()).mul(strength) : sunColor.set(strength);
-    }
-
     /**
      * The sky's light on the cloud, into {@code dest}. By day it is sky-tinted and
      * dims toward a storm grey as the weather darkens the ambient. With the sun
-     * down it is the horizon's own colour, a little under it, so the deck never
+     * down it is the sky's own colour behind the deck ({@code skyTint}: gold toward
+     * the sun's afterglow, blue elsewhere, as the march picks per direction), a
+     * little under it, and never above the horizon's brightness, so the deck never
      * glows brighter than the sky it hangs in: indigo under a full moon, near
-     * black under a new one.
+     * black under a new one. (It took the horizon's colour everywhere, which in
+     * twilight is half gold, and tinted the whole deck salmon long after the sun
+     * had left it.)
      */
     static Vector3f ambientColor(SkyLight sky, Vector3f skyTint, float ambient, Vector3f dest) {
         float a = Math.clamp(ambient, 0f, 1f);
         float day = sky != null ? sky.daylight() : 1f;
         float fx = STORM_TINT.x, fy = STORM_TINT.y, fz = STORM_TINT.z;
         if (sky != null) {
-            Vector3f h = sky.horizon();
+            Vector3f h = skyTint;
             fx = lerp(h.x * NIGHT_SHARE, fx, day);
             fy = lerp(h.y * NIGHT_SHARE, fy, day);
             fz = lerp(h.z * NIGHT_SHARE, fz, day);
@@ -429,17 +447,13 @@ public final class CloudRenderer {
         return a + (b - a) * t;
     }
 
-    private static float smoothstep(float e0, float e1, float x) {
-        float t = Math.clamp((x - e0) / (e1 - e0), 0f, 1f);
-        return t * t * (3f - 2f * t);
-    }
-
     public void cleanup() {
         map.cleanup();
         weatherMap.cleanup();
         terrainMap.cleanup();
         noise.cleanup();
         siteCache.cleanup();
+        sunlight.cleanup();
         sceneDepth.cleanup();
         quad.cleanup();
         marchShader.cleanup();
