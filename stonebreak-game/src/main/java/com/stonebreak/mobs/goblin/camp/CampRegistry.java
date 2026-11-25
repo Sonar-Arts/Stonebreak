@@ -15,6 +15,8 @@ import com.stonebreak.world.World;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.joml.Vector3i;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,8 +30,15 @@ import java.util.Map;
  * The goblin camps of one authoritative world — those whose fires are loaded. A camp lives in its
  * fire ({@link CampAnchor}): it thaws when the fire's chunk loads, its goblins brought back round
  * the fire; it freezes into the fire when the chunk unloads; it disbands when the fire goes out.
+ *
+ * <p>A camp's data carries the world tick it stands at. A thawed camp lives through its time away
+ * once ({@link GoblinCamp#catchUpTo}) — on its first tick with its stash in reach, its chest bound
+ * — and until then it is held: its goblins come back, but it neither eats, grows nor builds, so no
+ * stretch of time is lived twice.
  */
 public final class CampRegistry implements CampAnchor {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(CampRegistry.class);
 
     /** No night band spawns this close to a camp: its land is the camp's own. */
     public static final float TERRITORY = 48.0f;
@@ -49,10 +58,18 @@ public final class CampRegistry implements CampAnchor {
     static final int HOME_GROUND_CELLS = 400;
     /** Seconds between each camp's look round for a rival to raid. */
     static final float RAID_PLAN_INTERVAL = 30.0f;
+    /**
+     * Seconds a thawed camp waits for its chest's chunk before catching up without it, from what
+     * it holds outside the chest.
+     */
+    static final float CATCH_UP_WAIT_SECONDS = 10.0f;
 
     private final World world;
     private final Map<BlockPos, GoblinCamp> camps = new LinkedHashMap<>();
+    /** What each camp last saved, unstamped: a camp is written again only when it changes. */
     private final Map<BlockPos, String> saved = new HashMap<>();
+    /** Seconds each thawed camp has waited for its chest to catch up. */
+    private final Map<BlockPos, Float> heldFor = new HashMap<>();
     private final java.util.Random random = new java.util.Random();
     private float saveTimer;
     private float buildTimer = BUILD_INTERVAL;
@@ -125,13 +142,17 @@ public final class CampRegistry implements CampAnchor {
                 planRaid(camp);
             }
             if (buildNow) {
-                build(camp);
+                if (camp.offlineSince() < 0) { // held: its repair wait is counted in the catch-up
+                    build(camp);
+                }
                 surveyHomeGround(camp);
             }
             thaw(camp);
             keepChest(camp, dt);
             keepRack(camp, buildNow);
-            camp.tick(dt, random);
+            if (caughtUp(camp, dt)) {
+                camp.tick(dt, random);
+            }
             if (camp.population() == 0) {
                 if (dead == null) {
                     dead = new ArrayList<>();
@@ -146,6 +167,7 @@ public final class CampRegistry implements CampAnchor {
                 // Every goblin is dead: the fire stays, a camp no more.
                 camps.remove(fire);
                 saved.remove(fire);
+                heldFor.remove(fire);
                 world.getCampfireRegistry().setCampData(world, fire, null);
             }
         }
@@ -175,14 +197,17 @@ public final class CampRegistry implements CampAnchor {
 
     @Override
     public void loaded(BlockPos fire, String campData) {
-        camps.put(fire, CampCodec.decode(fire, campData));
-        saved.put(fire, campData);
+        // The clock may not be running yet (a world still pre-generating): the stamp is read on its first tick.
+        GoblinCamp camp = CampCodec.decode(fire, campData);
+        camps.put(fire, camp);
+        saved.put(fire, CampCodec.encode(camp));
     }
 
     @Override
     public String unloading(BlockPos fire) {
         GoblinCamp camp = camps.remove(fire);
         saved.remove(fire);
+        heldFor.remove(fire);
         if (camp == null) {
             return null;
         }
@@ -201,13 +226,21 @@ public final class CampRegistry implements CampAnchor {
         if (camp.rack() != null) {
             world.getMeatRackRegistry().persist(world, camp.rack());
         }
-        return camp.population() > 0 ? CampCodec.encode(camp) : null;
+        // Stamped now — or, never having caught up, still with the stamp it thawed with.
+        return camp.population() > 0 ? CampCodec.encode(camp, world.worldTicks()) : null;
+    }
+
+    @Override
+    public String saving(BlockPos fire, String campData) {
+        GoblinCamp camp = camps.get(fire);
+        return camp != null && camp.population() > 0 ? CampCodec.encode(camp, world.worldTicks()) : campData;
     }
 
     @Override
     public void extinguished(BlockPos fire) {
         GoblinCamp camp = camps.remove(fire);
         saved.remove(fire);
+        heldFor.remove(fire);
         if (camp == null) {
             return;
         }
@@ -235,6 +268,32 @@ public final class CampRegistry implements CampAnchor {
     }
 
     /* ── Helpers ─────────────────────────────────────────────── */
+
+    /**
+     * Whether {@code camp} owes no time from a thaw — lives through it now if its stash is in reach
+     * (its chest bound, or it has none) or it has waited {@link #CATCH_UP_WAIT_SECONDS} for it — and
+     * may run. The result is saved at once, chest and all, so the stamp it thawed with is never
+     * lived through twice.
+     */
+    private boolean caughtUp(GoblinCamp camp, float dt) {
+        if (camp.offlineSince() < 0) {
+            return true;
+        }
+        BlockPos fire = camp.fire();
+        boolean stashInReach = camp.chest() == null || camp.chestBound();
+        if (!stashInReach && heldFor.merge(fire, dt, Float::sum) < CATCH_UP_WAIT_SECONDS) {
+            return false;
+        }
+        heldFor.remove(fire);
+        long since = camp.offlineSince();
+        int before = camp.population();
+        float seconds = camp.catchUpTo(world.worldTicks(), random); // no clock: owes nothing
+        LOGGER.debug("Goblin camp at {} caught up {}s away (frozen at tick {}): population {} -> {}, stash {}{}",
+                fire, seconds, since, before, camp.population(), camp.stash().food(),
+                stashInReach ? "" : " (chest not loaded)");
+        save(camp, true);
+        return true;
+    }
 
     private void thaw(GoblinCamp camp) {
         EntityManager entities = world.getEntityManager();
@@ -472,16 +531,21 @@ public final class CampRegistry implements CampAnchor {
     }
 
     private void save(GoblinCamp camp) {
+        save(camp, false);
+    }
+
+    /** Saves the camp into its fire when it changed — or regardless, with {@code force} — stamped now. */
+    private void save(GoblinCamp camp, boolean force) {
         if (camp.chestBound()) {
             world.getChestRegistry().persist(world, camp.chest()); // writes (and echoes) only on change
         }
         if (camp.rack() != null) {
             world.getMeatRackRegistry().persist(world, camp.rack()); // so clients see the hooks fill
         }
-        String data = CampCodec.encode(camp);
-        if (!data.equals(saved.get(camp.fire()))) {
-            saved.put(camp.fire(), data);
-            world.getCampfireRegistry().setCampData(world, camp.fire(), data);
+        String content = CampCodec.encode(camp); // unstamped, or every save would be a change
+        if (force || !content.equals(saved.get(camp.fire()))) {
+            saved.put(camp.fire(), content);
+            world.getCampfireRegistry().setCampData(world, camp.fire(), CampCodec.encode(camp, world.worldTicks()));
         }
     }
 }

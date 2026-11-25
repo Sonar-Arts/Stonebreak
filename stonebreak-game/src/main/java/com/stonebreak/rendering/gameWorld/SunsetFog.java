@@ -23,9 +23,12 @@ public final class SunsetFog {
     private static final Vector3f shadow = new Vector3f();
     private static float shadowHeight, band;
     private static final Vector3f aureole = new Vector3f();
+    private static float aureoleWidth = 0.25f;
     /** The sky's glow round the sun (sky.frag getSunContribution): its tint over sunlight, and strength. */
     private static final Vector3f AUREOLE_TINT = new Vector3f(1.0f, 0.8f, 0.5f);
     private static final float AUREOLE = 0.4f;
+    /** Its width (1 − cos of the angle from the sun) with a clear day's aerosol; sky.frag AUREOLE_WIDTH. */
+    private static final float AUREOLE_WIDTH = 0.25f;
     /** sky.frag SUN_SINK: how far below the sea's edge the sun takes to fade out. */
     private static final float SUN_SINK = 0.12f;
 
@@ -52,13 +55,23 @@ public final class SunsetFog {
      * @param edgeHeight    its edge's height opposite the sun (sine of elevation)
      * @param twilightBand  how strongly it shows (0 = not at all)
      * @param sunAureole    the sky's glow round the sun ({@link #sunAureole}); zero for none
+     * @param sky           this frame's sky, whose aerosol sets the aureole's width
      */
     public static synchronized void setTwilight(Vector3f earthShadow, float edgeHeight, float twilightBand,
-                                                Vector3f sunAureole) {
+                                                Vector3f sunAureole, SkyLight sky) {
         shadow.set(earthShadow);
         shadowHeight = edgeHeight;
         band = twilightBand;
         aureole.set(sunAureole);
+        aureoleWidth = aureoleWidth(sky);
+    }
+
+    /**
+     * How wide the sky's glow round the sun is (1 − cos of the angle from it): broader in the
+     * hazier evening air, tighter at dawn ({@link SkyLight#aerosol()}). sky.frag mirrors it.
+     */
+    public static float aureoleWidth(SkyLight sky) {
+        return AUREOLE_WIDTH * (sky != null ? sky.aerosol() : 1f);
     }
 
     /**
@@ -93,5 +106,6 @@ public final class SunsetFog {
         shader.setFloat("u_earthShadowHeight", shadowHeight);
         shader.setFloat("u_twilightBand", band);
         shader.setVec3("u_sunAureole", aureole);
+        shader.setFloat("u_aureoleWidth", aureoleWidth);
     }
 }

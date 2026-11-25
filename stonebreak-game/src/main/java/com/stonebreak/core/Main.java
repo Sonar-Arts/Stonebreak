@@ -251,6 +251,7 @@ public class Main {
             public void afterUpdate() {
                 maybeAutoStartWorld();
                 maybeAutoView();
+                com.stonebreak.core.dev.SkyCapture.update();
                 maybeAutoPause();
                 Game.displayDebugInfo();
                 inputRouter.pollActiveScreen();
@@ -270,6 +271,9 @@ public class Main {
                 maybeAutoFx();
                 maybeAutoBattle();
                 maybeAutoScreenshot();
+                if (com.stonebreak.core.dev.SkyCapture.shoot(window.width(), window.height())) {
+                    requestClose();
+                }
                 maybeAutoResume();
                 maybeAutoFly();
                 maybeAutoChat();

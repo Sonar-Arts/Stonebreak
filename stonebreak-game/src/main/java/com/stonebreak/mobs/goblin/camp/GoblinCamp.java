@@ -18,7 +18,8 @@ import java.util.List;
  * A goblin camp: a hearth (its campfire), the goblins who live there, and the food they have put
  * by. Everything about it that survives a save lives in its fire's state ({@link CampCodec}), so
  * the camp is frozen and thawed with that chunk — its goblins are not saved as entities but
- * brought back from the roster ({@link #waiting()}).
+ * brought back from the roster ({@link #waiting()}). A thawed camp lives through its time frozen
+ * once, on thaw ({@link #catchUpTo}), so it costs nothing while it is away.
  *
  * <p>Its goblins run in packs of up to {@link CampGrowth#PACK_SIZE}; one pack at a time goes out as
  * the hunting party, until the meat it carries plus the stash is a meal for everyone, and brings it
@@ -62,6 +63,8 @@ public final class GoblinCamp {
     /** Where the camp's goblins mill about at rest: floor round the fire they walk to and back from. */
     private List<org.joml.Vector3i> homeGround = List.of();
     private float raidCooldown = RaidPlanner.COOLDOWN_SECONDS;
+    /** World tick the camp froze at, while it has not yet lived through its time away; -1 otherwise. */
+    private long offlineSince = -1L;
 
     public GoblinCamp(BlockPos fire) {
         this.fire = fire;
@@ -368,6 +371,49 @@ public final class GoblinCamp {
             stores.add(p.carried());
         }
         return FoodStore.union(stores);
+    }
+
+    /** The world tick the camp froze at, while it still owes its time away; -1 when it owes none. */
+    public long offlineSince() {
+        return offlineSince;
+    }
+
+    public void setOfflineSince(long ticks) {
+        offlineSince = Math.max(-1L, ticks);
+    }
+
+    /**
+     * The world time the camp's state stands at, to save with it: when it froze, while it has not
+     * yet lived through its time away (so a camp frozen again before catching up owes the lot);
+     * {@code nowTicks} otherwise.
+     */
+    public long stampAt(long nowTicks) {
+        return offlineSince >= 0 ? offlineSince : nowTicks;
+    }
+
+    /**
+     * Lives through the time the camp spent frozen, from {@link #offlineSince()} to world tick
+     * {@code nowTicks} (at most a day, {@link CampGrowth#catchUpSeconds}), in steps of
+     * {@link CampGrowth#INTERVAL_SECONDS} — the same {@link #tick} it runs loaded, so it eats and
+     * grows by the same rules. Nobody hunts while frozen, so nothing comes in; a hungry camp stays
+     * hungry and loses nobody; raids are planned by the world, never here. The repair wait counts
+     * down. Owes nothing afterwards, so a second call lives through nothing.
+     *
+     * @return the seconds lived through
+     */
+    public float catchUpTo(long nowTicks, java.util.Random random) {
+        if (offlineSince < 0) {
+            return 0.0f;
+        }
+        float seconds = CampGrowth.catchUpSeconds(offlineSince, nowTicks);
+        offlineSince = -1L;
+        for (float left = seconds; left > 0.0f; ) {
+            float step = Math.min(CampGrowth.INTERVAL_SECONDS, left);
+            tick(step, random);
+            left -= step;
+        }
+        repairWait = Math.max(0.0f, repairWait - seconds);
+        return seconds;
     }
 
     /** Eats, keeps its packs in bands of {@link CampGrowth#PACK_SIZE}, and grows when it can afford to. */

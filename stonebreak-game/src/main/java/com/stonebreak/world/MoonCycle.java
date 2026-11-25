@@ -7,10 +7,11 @@ import org.joml.Vector3f;
  *
  * <p>Geometry as in life, with the month shortened to {@link #CYCLE_DAYS} days.
  * The phase p (0 = new, 0.5 = full) sets the moon's elongation from the sun,
- * e = 2πp. The moon is the sun turned back by e about the pole the sky wheels
- * around (Z), so it lags the sun by e and rises later each day. Each night is
+ * e = 2πp. The moon is the sun turned back by e about the celestial pole the sky
+ * wheels around ({@link TimeOfDay#celestialPole}), so it lags the sun by e and rises
+ * later each day. Each night is
  * centred on one phase: day d's midnight is phase d / {@link #CYCLE_DAYS}. The
- * full moon rises at sunset and is overhead at midnight, the waxing crescent
+ * full moon rises at sunset and is highest at midnight, the waxing crescent
  * hangs in the west after dusk, and the waning crescent rises in the east
  * before dawn. Because the sky shader lights the disc from the real
  * sun direction, the lit limb always faces the sun and the phase shapes follow
@@ -69,7 +70,9 @@ public final class MoonCycle {
      * crescents really do hang beside the sun.
      */
     public static Vector3f direction(TimeOfDay time) {
-        return time.getSunDirection().rotateZ(elongation(phase(time)));
+        Vector3f pole = TimeOfDay.celestialPole();
+        // A positive turn about the pole carries the sun forward; the moon is turned back.
+        return time.getSunDirection().rotateAxis(-elongation(phase(time)), pole.x, pole.y, pole.z);
     }
 
     /** "Waxing Gibbous" and the like: the name of the nearest of the eight phases. */

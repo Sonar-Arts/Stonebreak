@@ -33,7 +33,9 @@ class GroundFogTest {
     void formsSteadilyAsTheSunGoesDown() {
         float previous = 0f;
         boolean partial = false;
-        for (int t = TimeOfDay.SUNSET; t <= TimeOfDay.DUSK + 1000; t += 25) {
+        // The sun sinks slowly through twilight (TimeOfDay.TWILIGHT_DILATION): -8.6 degrees,
+        // where the fog is full, comes about two real minutes after sunset.
+        for (int t = TimeOfDay.SUNSET; t <= TimeOfDay.DUSK + 2000; t += 25) {
             float s = strengthAt(t);
             assertTrue(s >= previous - 1e-6f, "fog thinned at tick " + t);
             partial |= s > 0f && s < 1f;

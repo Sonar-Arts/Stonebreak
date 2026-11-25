@@ -18,6 +18,11 @@
 // darkening of creases. Light behind the cloud is kept by exp(-sigma * d), the
 // rule cloud shadows and water use, so thin cloud is see-through.
 //
+// Each sample takes the sunlight that reaches its own height (CloudSunlight,
+// baked per frame into u_keyLightLut): a cloud kilometres up sees the sun
+// for a while after it has set on the ground, lit from below in red, the
+// high cloud last, and its light has crossed a long slant of air.
+//
 // In the golden hour the warm sunlight is seen mostly toward the sun. Cloud
 // droplets scatter forward, so the low, dim, reddened beam lines the clouds
 // near the sun in gold, and the clouds opposite send back far less of it. There
@@ -49,8 +54,13 @@ layout(location = 1) out float cloudDistance;
 uniform sampler2D u_sceneDepth;
 uniform mat4 u_invViewProj;     // render space
 uniform vec3 u_camPos;          // render space
-uniform vec3 u_sunDir;
-uniform vec3 u_sunColor;
+uniform vec3 u_sunDir;          // the key light: the true sun (even below the horizon) or the moon
+uniform vec3 u_sunColor;        // the key light on the cirrus, the highest cloud (its warmth gates sunsetFalloff)
+// The key light by height (CloudSunlight): u_keyLutBottom..u_keyLutTop in
+// blocks, texel centres at the ends.
+uniform sampler1D u_keyLightLut;
+uniform float u_keyLutBottom;
+uniform float u_keyLutTop;
 uniform vec3 u_ambientColor;    // the sky's light on the cloud where the sky is gold...
 uniform vec3 u_ambientClear;    // ...and where it is not
 uniform vec3 u_hazeColor;       // distant clouds fade toward this (the sky without the gold)
@@ -102,7 +112,7 @@ const float LIGHT_LOD_FOOTPRINT = 1.5;
 const float CHEAP_LIGHT_BELOW = 0.7;
 // High cirrus layer (cirrusLayer). Tiles are blocks and divide the map period,
 // so the pattern never jumps when u_cloudOffset wraps.
-const float CIRRUS_Y = 560.0;
+const float CIRRUS_Y = 560.0;         // CloudSunlight.CIRRUS_Y
 const float CIRRUS_ALONG = 1536.0;  // streak noise tile along x (the wind runs mostly +x)...
 const float CIRRUS_ACROSS = 192.0;  // ...and across: fibres ~8x longer than wide
 const float CIRRUS_PATCH = 3072.0;  // where the cirrus is: patches ~800 blocks across
@@ -123,8 +133,13 @@ const float EXPOSURE = 1.6;
 
 const float FLASH_RADIUS = 110.0;
 const vec3 FLASH_COLOR = vec3(0.75, 0.8, 1.0);
-// Lowest sun elevation the sun march is aimed at, so it never runs flat along the slab.
-const float MIN_SUN_Y = 0.15;
+// The steepest the sun march may lie to the slab, as a sine, on either side: a
+// march along a flat slab would read the same cloud for its whole length. With
+// the sun below the horizon the march runs down, so cloud bases are lit from
+// below; a sun above it lights them from above, as before.
+const float MIN_SUN_SLOPE = 0.05;
+// CloudSunlight.TEXELS.
+const float KEY_LUT_TEXELS = 32.0;
 // Golden-hour fall-off of the sunlight with the angle from the sun: a gaussian
 // in the angle, as wide as SUNSET_LOBE (radians, 70 degrees), over a floor of
 // SUNSET_BACK opposite the sun.
@@ -133,6 +148,12 @@ const float SUNSET_BACK = 0.25;
 // Sunlight warmth (1 - blue / brightest channel) at which the fall-off is
 // complete: SkyLight's GOLDEN_SUN. White noon sun and the blue moon have none.
 const float SUNSET_WARMTH = 0.48;
+
+// The key light reaching height y (blocks), from the table.
+vec3 keyLightAt(float y) {
+    float u = clamp((y - u_keyLutBottom) / (u_keyLutTop - u_keyLutBottom), 0.0, 1.0);
+    return textureLod(u_keyLightLut, (u * (KEY_LUT_TEXELS - 1.0) + 0.5) / KEY_LUT_TEXELS, 0.0).rgb;
+}
 
 // How much of the sunlight a cloud in view direction cosTheta from the sun shows.
 // Full toward the sun, about 0.6 at 90 degrees, SUNSET_BACK opposite; 1 outside
@@ -158,7 +179,8 @@ float skyVisibility(CloudSite site, float y, float footprint) {
     return exp(-SKY_OCCLUSION * od);
 }
 
-// Optical depth from p toward the sun, through the cloud above and around it.
+// Optical depth from p toward the sun, through the cloud above (or, with the sun
+// below the horizon, below) and around it.
 // `detail`: the first step reads the detail noise (it shapes the lit rim).
 // Anvil ice counts ANVIL_SHADOW of its depth: thin, forward-scattering, and a
 // full-strength shadow under a flat overhang reads as a band across the wall.
@@ -172,7 +194,7 @@ float sunOpticalDepth(vec3 p, vec3 dir, float footprint, bool detail, float lodD
     for (int i = 0; i <= steps; i++) {
         if (i == steps) ds = LIGHT_FAR_STEP;
         vec3 q = p + dir * (t + 0.5 * ds);
-        if (q.y > u_slabTop) break;
+        if (q.y > u_slabTop || q.y < u_slabBottom) break;
         bool covered;
         CloudSample s = cloudAt(q, max(footprint, ds), detail && i == 0, covered);
         od += extinction(s) * mix(1.0, ANVIL_SHADOW, s.anvil) * ds;
@@ -332,7 +354,8 @@ void main() {
     if (occluded) slab = false;
     tFar = min(tFar, tLimit);
 
-    vec3 sunMarch = normalize(vec3(u_sunDir.x, max(u_sunDir.y, MIN_SUN_Y), u_sunDir.z));
+    float sunSlope = u_sunDir.y >= 0.0 ? max(u_sunDir.y, MIN_SUN_SLOPE) : min(u_sunDir.y, -MIN_SUN_SLOPE);
+    vec3 sunMarch = normalize(vec3(u_sunDir.x, sunSlope, u_sunDir.z));
     float cosTheta = dot(rd, u_sunDir);
     // Multiple scattering (Wrenninge's octaves): each order is weaker, reaches
     // deeper into the cloud and scatters more evenly.
@@ -341,11 +364,10 @@ void main() {
     // have gathered less scattered light than its body, so they read darker.
     // Gone when looking toward the sun.
     float powderAmount = 0.6 * (0.5 - 0.5 * cosTheta);
-    vec3 sunLight = u_sunColor * sunsetFalloff(cosTheta);
+    float falloff = sunsetFalloff(cosTheta);
     // The sky behind the cloud, and the light it casts on it.
     vec3 haze = horizonFogColor(u_hazeColor, rd);
-    vec2 flatDir = rd.xz / max(length(rd.xz), 1e-4);
-    vec3 ambient = mix(u_ambientClear, u_ambientColor, min(sunsetFogWeight(flatDir), 1.0));
+    vec3 ambient = mix(u_ambientClear, u_ambientColor, min(sunsetFogWeight(rd), 1.0));
 
     float scale = slab ? stepScale(tNear, tFar) : 1.0;
     float rayDither = dither(gl_FragCoord.xy);
@@ -381,6 +403,7 @@ void main() {
             // Skylight: the base of a cloud sees less of the sky than its top.
             float skyLit = mix(0.35, 1.0, sqrt(clamp(s.height, 0.0, 1.0)))
                     * mix(1.0 - SKY_OCCLUSION_MAX, 1.0, skyVisibility(site, p.y, footprint));
+            vec3 sunLight = keyLightAt(p.y) * falloff;
             vec3 lit = s.albedo * (sunLight * sun * powder + ambient * skyLit);
             lit += FLASH_COLOR * flashAt(p);
             lit = 1.0 - exp(-EXPOSURE * lit);
@@ -404,7 +427,8 @@ void main() {
     // The cirrus, behind the cumulus slab (it hangs far above it).
     if (transmittance >= MIN_TRANSMITTANCE && ro.y < CIRRUS_Y) {
         float tc;
-        vec4 ci = cirrusLayer(ro, rd, tLimit, across, pixelAngle, cosTheta, sunLight, ambient, haze, tc);
+        vec4 ci = cirrusLayer(ro, rd, tLimit, across, pixelAngle, cosTheta, keyLightAt(CIRRUS_Y) * falloff,
+                ambient, haze, tc);
         if (ci.a > 0.0) {
             float added = transmittance * ci.a;
             light += transmittance * ci.rgb;

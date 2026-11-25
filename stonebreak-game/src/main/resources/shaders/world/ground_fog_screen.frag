@@ -8,6 +8,7 @@
 // Blend (ONE, SRC_ALPHA): scene * transmittance + fog light.
 
 #include "/shaders/world/ground_fog.glsl"
+#include "/shaders/world/dither.glsl"
 
 in vec2 vUv;
 out vec4 fragColor;
@@ -25,9 +26,12 @@ void main() {
     float depth = texture(u_sceneDepth, vUv).r;
     if (depth >= 1.0) {
         fragColor = groundFog(u_camPos, normalize(worldAt(vUv, 1.0) - u_camPos), 1e9);
-        return;
+    } else {
+        vec3 toPoint = worldAt(vUv, depth) - u_camPos;
+        float dist = length(toPoint);
+        fragColor = groundFog(u_camPos, toPoint / max(dist, 1e-4), dist);
     }
-    vec3 toPoint = worldAt(vUv, depth) - u_camPos;
-    float dist = length(toPoint);
-    fragColor = groundFog(u_camPos, toPoint / max(dist, 1e-4), dist);
+    // Dither the fog's share of the pixel (dither.glsl): the night fog is a dark
+    // gradient, and the dithered sky under it shows through only by alpha.
+    fragColor.rgb += ditherTpdf(gl_FragCoord.xy) * (1.0 - fragColor.a);
 }
