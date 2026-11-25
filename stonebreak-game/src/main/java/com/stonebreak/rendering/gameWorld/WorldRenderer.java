@@ -64,6 +64,8 @@ public class WorldRenderer {
     private final Vector3f cloudCacheEye = new Vector3f();
     private final PrecipitationFog precipitationFog;
     private final com.stonebreak.rendering.gameWorld.fog.GroundFog groundFog;
+    /** The point the sky turns about ({@link com.stonebreak.world.TimeOfDay#celestialPole}). */
+    private static final Vector3f CELESTIAL_POLE = com.stonebreak.world.TimeOfDay.celestialPole();
     /** How much a full lightning flash adds to the scene's ambient light. */
     private static final float LIGHTNING_AMBIENT = 0.6f;
     private final WeatherEffects weatherEffects =
@@ -273,7 +275,7 @@ public class WorldRenderer {
                     weatherEffects.tintSky(sky.clearHorizon(), new Vector3f()),
                     weatherEffects.tintSky(sky.sunsetColor(), new Vector3f()), sky.sunsetCoverage(),
                     new Vector3f(sky.sunGlow()).mul(clear), sky.sunColor(),
-                    earthShadow, earthShadowHeight, twilightBand, sky.daylight(), seaHorizon);
+                    earthShadow, earthShadowHeight, twilightBand, sky.daylight(), seaHorizon, CELESTIAL_POLE);
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
             keyDirection = sunDirection;
@@ -282,7 +284,7 @@ public class WorldRenderer {
             ambientLightLevel = 1.0f;
             skyParams = new SkyParams(sunDirection, new Vector3f(sunDirection).negate(), 0f,
                     skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f, new Vector3f(),
-                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f, seaHorizon);
+                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f, seaHorizon, CELESTIAL_POLE);
         }
 
         // Cube terrain: this world's stream events feed the region renderer (idempotent attach); publish

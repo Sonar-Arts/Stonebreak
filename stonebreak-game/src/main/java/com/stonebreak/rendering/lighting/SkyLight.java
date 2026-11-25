@@ -117,10 +117,10 @@ public record SkyLight(
      */
     static final float SUNSET_H_AWAY = 0.06f, SUNSET_H_SUN = 0.35f;
     /**
-     * How far through its day (degrees of the day's turn, see {@link #dayAngle}) the sun
-     * is from the horizon when the gold begins or ends: 30° is two hours, so it grows
-     * in from 4 PM to 6 PM (as the pre-moon sky did) and draws back until 8 PM; at dawn
-     * the mirror image, 4 AM to 8 AM.
+     * How far round its daily circle (degrees of the sky's turn, see {@link #dayAngle})
+     * the sun is from the horizon when the gold begins or ends: 30°, where the sun stands
+     * 22.5° up or down. It grows in from about 3:15 PM to sunset at 6 PM and draws back
+     * over the five real minutes after; at dawn the mirror image.
      */
     static final float GOLDEN_SPAN = 30f;
     /**
@@ -140,14 +140,16 @@ public record SkyLight(
     private static final Vector3f MOONLIGHT = new Vector3f(0.70f, 0.80f, 1.0f);
 
     /**
-     * Sun elevations (degrees) where the palette's stops sit. Stretched a little past
-     * the real bands (−18°, −12°, −6°): the game's sun sinks about 1.4° per real
-     * second, which would leave the blue hour barely a minute long.
+     * Sun elevations (degrees) where the palette's stops sit: the real bands, with the
+     * civil stop at the blue hour's top (−4°). Near the horizon the sun sinks 0.069° per
+     * real second ({@link TimeOfDay#TWILIGHT_DILATION}), so civil twilight lasts about
+     * 85 s, nautical 77 s and astronomical 68 s: night falls four minutes after sunset.
+     * (Before the latitude path the sun sank 0.24°/s and the stops were stretched to −24°.)
      */
-    private static final float ASTRONOMICAL = -24f, NAUTICAL = -12f, CIVIL = -4f, DAY = 10f;
+    private static final float ASTRONOMICAL = -18f, NAUTICAL = -12f, CIVIL = -4f, DAY = 10f;
     /**
      * Sunlight's hue stops, as the sun's y: the horizon orange at 0, gold by about 12°
-     * up, white by 30°. Wide, so the sun reddens over the whole descent (about two real
+     * up, white by 30°. Wide, so the sun reddens over the whole descent (several real
      * minutes) rather than flipping to orange in its last few degrees.
      */
     private static final float GOLDEN_Y = 0.20f, WHITE_Y = 0.50f;
@@ -159,7 +161,7 @@ public record SkyLight(
     /** Ambient with no moon, and the extra a full moon overhead adds. */
     static final float NIGHT_AMBIENT = 0.09f, MOON_AMBIENT = 0.13f;
     /** Ambient with the sun on the horizon, as {@link TimeOfDay#getAmbientLightLevel()} has it. */
-    private static final float HORIZON_AMBIENT = 0.3f;
+    private static final float HORIZON_AMBIENT = TimeOfDay.HORIZON_AMBIENT;
     /** Moonlight's diffuse strength relative to the sun's: faint, so moon shadows stay soft. */
     static final float MOON_KEY = 0.6f;
     /** Sun elevation (y) below which the moon becomes the key light. The sun's own shadows are gone by then. */
@@ -263,12 +265,14 @@ public record SkyLight(
     }
 
     /**
-     * How far through its day the sun is from the horizon, in degrees of the day's
-     * turn (360° a day, 15° an hour): positive with the sun up, negative with it down,
-     * the same at dawn as at dusk. The sun's elevation is 90°·sin of it.
+     * How far round its daily circle the sun is from the horizon, in degrees of the sky's
+     * turn ({@link TimeOfDay#skyAngle}): positive with the sun up, negative with it down,
+     * the same at dawn as at dusk. On the equinox path sin(elevation) = cos φ·sin of it.
      */
     static float dayAngle(float sunElevation) {
-        return (float) Math.toDegrees(Math.asin(Math.clamp(sunElevation / 90f, -1f, 1f)));
+        double cosLat = Math.cos(Math.toRadians(TimeOfDay.LATITUDE_DEG));
+        double s = Math.sin(Math.toRadians(sunElevation)) / cosLat;
+        return (float) Math.toDegrees(Math.asin(Math.clamp(s, -1.0, 1.0)));
     }
 
     /**

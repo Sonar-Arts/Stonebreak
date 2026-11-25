@@ -157,7 +157,7 @@ class SkyLightTest {
     void theGoldDrawsBackTowardTheSunFromTheOppositeHorizon() {
         float previousOpposite = 1f, previousOverhead = 1f, previousSunSide = 1f;
         boolean overheadOutlastsOpposite = false;
-        for (long tick = 12_000; tick <= 14_000; tick += 100) {
+        for (long tick = 12_000; tick <= 15_000; tick += 100) {
             float c = at(2, tick).sunsetCoverage();
             float opposite = SkyLight.sunsetWeight(c, 1f);
             float overhead = SkyLight.sunsetWeight(c, 0.5f);
@@ -171,8 +171,9 @@ class SkyLightTest {
             previousSunSide = sunSide;
         }
         assertTrue(overheadOutlastsOpposite, "for a while the far horizon is blue under a gold zenith");
-        assertEquals(0f, SkyLight.sunsetWeight(at(2, 13_990).sunsetCoverage(), 0f), 0.02f, "gone by 8 PM");
-        assertEquals(0f, at(2, 14_000).evening(), 1e-6);
+        // Gone once the sun is GOLDEN_SPAN round its circle below the horizon, 22.5 degrees down.
+        assertEquals(0f, SkyLight.sunsetWeight(at(2, 14_900).sunsetCoverage(), 0f), 0.02f, "gone at -24 degrees");
+        assertEquals(0f, at(2, 15_000).evening(), 1e-6);
     }
 
     @Test
@@ -188,7 +189,7 @@ class SkyLightTest {
         assertTrue(midnight.keyLight().z > midnight.keyLight().x, "moonlight is cool");
         assertTrue(midnight.keyLight().z <= SkyLight.MOON_KEY + 1e-6f, "and faint");
         // At the hand-over the moon's light starts from nothing, so shadows never jump.
-        SkyLight handover = SkyLight.compute(TimeOfDay.directionAt(0.5052f),
+        SkyLight handover = SkyLight.compute(new Vector3f(1f, SkyLight.KEY_SWITCH_Y - 0.001f, 0f).normalize(),
                 midnight.moonDir(), 0.5f, 0.3f);
         assertTrue(handover.keyIsMoon());
         assertTrue(handover.keyLight().length() < 0.02f);

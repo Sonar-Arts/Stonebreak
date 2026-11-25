@@ -37,6 +37,31 @@ public class TimeOfDay {
     /** Fastest valid timeSpeed. Bounds a single update's step so it can't overflow the clock. */
     public static final float MAX_TIME_SPEED = 1000.0f;
 
+    /**
+     * The latitude the sky is seen from, degrees north. The sun keeps the equinox path:
+     * it rises due east, crosses the meridian 90° − φ up (toward +Z, the south) and sets
+     * due west, and the sky wheels about the celestial pole, φ up in the north (−Z). At
+     * the poles' side of the equator the sun meets the horizon at a slant, so twilight is
+     * longer than straight overhead: at 40° it is cos 40° = 0.77 of the overhead speed.
+     */
+    public static final float LATITUDE_DEG = 40f;
+    /**
+     * How much the sky slows around sunrise and sunset, and speeds up at noon and
+     * midnight to make up for it: the day's progress p is warped by
+     * p − D·sin(4πp)/(4π), whose rate 1 − D·cos(4πp) is 1 − D at the horizon crossings
+     * (p = 0, 0.5) and 1 + D at noon and midnight. Sunrise, noon, sunset and midnight stay
+     * on their ticks. At 0.4 the sun sinks 0.069° per real second at the horizon, so civil
+     * twilight (0° to −6°) lasts about 85 s of a 2400 s day, where an overhead sun without
+     * the warp crossed it in 25 s.
+     */
+    public static final float TWILIGHT_DILATION = 0.4f;
+    private static final float SIN_LAT = (float) Math.sin(Math.toRadians(LATITUDE_DEG));
+    private static final float COS_LAT = (float) Math.cos(Math.toRadians(LATITUDE_DEG));
+    /** Sun elevation (degrees) from which the ambient light is full day. */
+    private static final float FULL_DAY_ELEVATION = 15f;
+    /** Ambient light with the sun on the horizon, and at its lowest, at midnight. */
+    public static final float HORIZON_AMBIENT = 0.3f, MIDNIGHT_AMBIENT = 0.15f;
+
     // Time of day milestones
     public static final int DAWN = 0;           // 6:00 AM
     public static final int SUNRISE = 1000;     // ~6:40 AM
@@ -254,13 +279,9 @@ public class TimeOfDay {
     }
 
     /**
-     * Calculates the sun direction vector based on current time.
-     * The sun rises in the east, peaks at noon, and sets in the west.
-     * Time progression:
-     * - Dawn (0 ticks): Sun rising in the east (horizon)
-     * - Noon (6000 ticks): Sun at zenith (directly overhead)
-     * - Dusk (12000 ticks): Sun setting in the west (horizon)
-     * - Midnight (18000 ticks): Sun below horizon (night)
+     * Direction to the sun now. It rises due east (−X) at dawn (tick 0), stands
+     * {@code 90° − LATITUDE_DEG} up toward +Z at noon, sets due west (+X) at dusk
+     * and is lowest, below the north horizon, at midnight. See {@link #directionAt}.
      */
     public Vector3f getSunDirection() {
         return directionAt(getNormalizedTime());
@@ -268,68 +289,60 @@ public class TimeOfDay {
 
     /**
      * Direction to a body on the sun's path at {@code dayProgress} through its own
-     * day (0 = rising in the east, 0.25 = overhead, 0.5 = setting in the west,
-     * 0.75 = straight below). The moon travels the same path, lagging the sun.
+     * day (0 = rising in the east, 0.25 = highest, 0.5 = setting in the west,
+     * 0.75 = lowest). The moon travels the same path, lagging the sun.
+     *
+     * <p>The equinox sun from latitude φ ({@link #LATITUDE_DEG}): with hour angle h
+     * the direction is (sin h, cos φ·cos h, sin φ·cos h), a great circle tilted φ from
+     * the vertical about the east-west line, turning about {@link #celestialPole}. The
+     * progress is first warped by {@link #TWILIGHT_DILATION} ({@link #skyAngle}).
      */
     public static Vector3f directionAt(float dayProgress) {
-        dayProgress -= (float) Math.floor(dayProgress);
-
-        // Elevation follows sine wave: sin(0°)=0, sin(90°)=1, sin(180°)=0, sin(270°)=-1
-        float elevationAngle = (float) Math.sin(Math.toRadians(dayProgress * 360.0f)) * 90.0f;
-
-        // Calculate azimuth (compass direction) - sun moves from east to west
-        // dayProgress 0.0 (dawn) → -90° (east)
-        // dayProgress 0.25 (noon) → 0° (south)
-        // dayProgress 0.5 (dusk) → 90° (west)
-        float azimuthAngle = (dayProgress * 2.0f - 0.5f) * 180.0f;
-
-        float elevRad = (float) Math.toRadians(elevationAngle);
-        float azimRad = (float) Math.toRadians(azimuthAngle);
-
-        float y = (float) Math.sin(elevRad); // Height (up/down)
-        float horizontalDistance = (float) Math.cos(elevRad);
-
-        // In OpenGL: +X = right, +Y = up, +Z = toward viewer
-        // We want: East = -X, West = +X, South = +Z
-        float x = horizontalDistance * (float) Math.sin(azimRad); // East-West
-        float z = horizontalDistance * (float) Math.cos(azimRad); // North-South
-
-        return new Vector3f(x, y, z).normalize();
+        float h = skyAngle(dayProgress);
+        float cosH = (float) Math.cos(h);
+        return new Vector3f((float) Math.sin(h), COS_LAT * cosH, SIN_LAT * cosH);
     }
 
     /**
-     * Gets the ambient light level based on time of day.
+     * The hour angle of the sky at {@code dayProgress}, radians: 0 with the sun on the
+     * meridian at noon, −π/2 at sunrise, π/2 at sunset. The whole sky (sun, moon and
+     * stars) turns by it about {@link #celestialPole}. The progress is warped by
+     * p − D·sin(4πp)/(4π) ({@link #TWILIGHT_DILATION}) first, slowing the sky around
+     * the horizon crossings.
+     */
+    public static float skyAngle(float dayProgress) {
+        double p = dayProgress - Math.floor(dayProgress);
+        p -= TWILIGHT_DILATION * Math.sin(4.0 * Math.PI * p) / (4.0 * Math.PI);
+        return (float) (2.0 * Math.PI * (p - 0.25));
+    }
+
+    /**
+     * The point the sky turns about, φ up in the north: (0, sin φ, −cos φ). A positive
+     * (right-handed) turn about it carries the sun forward along its path.
+     */
+    public static Vector3f celestialPole() {
+        return new Vector3f(0f, SIN_LAT, -COS_LAT);
+    }
+
+    /**
+     * Gets the ambient light level, from the sun's elevation: full day once the sun
+     * is {@value #FULL_DAY_ELEVATION}° up, {@link #HORIZON_AMBIENT} with it on the horizon,
+     * falling to {@link #MIDNIGHT_AMBIENT} with it at its lowest.
      * @return Light level from 0.0 (darkest night) to 1.0 (brightest day)
      */
     public float getAmbientLightLevel() {
-        long t = getTicks();
+        return ambientAt(getSunDirection().y);
+    }
 
-        // Sunrise transition (6:00 AM to 8:00 AM)
-        if (t < 2000) {
-            float progress = (t - DAWN) / 2000.0f;
-            return 0.3f + (progress * 0.7f); // 0.3 to 1.0
+    /** {@link #getAmbientLightLevel} for a sun whose direction has height {@code sunY}. */
+    public static float ambientAt(float sunY) {
+        float elevation = (float) Math.toDegrees(Math.asin(Math.clamp(sunY, -1f, 1f)));
+        if (elevation >= 0f) {
+            return HORIZON_AMBIENT + (1f - HORIZON_AMBIENT) * Math.min(elevation / FULL_DAY_ELEVATION, 1f);
         }
-
-        // Full daylight (8:00 AM to 4:00 PM)
-        if (t <= 10000) {
-            return 1.0f;
-        }
-
-        // Sunset transition (4:00 PM to 6:00 PM)
-        if (t <= DUSK) {
-            float progress = (t - 10000) / 2000.0f;
-            return 1.0f - (progress * 0.7f); // 1.0 to 0.3
-        }
-
-        // Night: gradual darkening to minimum at midnight, then lightening
-        if (t < MIDNIGHT) {
-            // Evening: 6:00 PM to 12:00 AM
-            float progress = (t - DUSK) / (float)(MIDNIGHT - DUSK);
-            return 0.3f - (progress * 0.15f); // 0.3 to 0.15
-        }
-        // Morning: 12:00 AM to 6:00 AM
-        float progress = (t - MIDNIGHT) / (float)(TICKS_PER_DAY - MIDNIGHT);
-        return 0.15f + (progress * 0.15f); // 0.15 to 0.3
+        // Below the horizon, by how far down the sun is of the most it can be (−cos φ at midnight).
+        float depth = Math.min(-sunY / COS_LAT, 1f);
+        return HORIZON_AMBIENT - (HORIZON_AMBIENT - MIDNIGHT_AMBIENT) * depth;
     }
 
     /**
