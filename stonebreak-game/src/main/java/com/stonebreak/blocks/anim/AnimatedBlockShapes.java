@@ -1,9 +1,7 @@
 package com.stonebreak.blocks.anim;
 
-import com.openmason.engine.format.oma.AnimSampler;
 import com.openmason.engine.format.oma.OMAReader;
 import com.openmason.engine.format.oma.ParsedAnimClip;
-import com.openmason.engine.format.oma.ParsedAnimTrack;
 import com.openmason.engine.format.omo.OMOReader;
 import com.stonebreak.format.sbo.SBOParseResult;
 import com.stonebreak.blocks.BlockType;
@@ -13,9 +11,13 @@ import com.openmason.engine.entity.model.EntityModelLoader;
 import com.openmason.engine.entity.model.EntityFace;
 import com.openmason.engine.entity.model.EntityGeometry;
 import com.openmason.engine.entity.model.EntityPart;
+import com.openmason.engine.rendering.model.draw.ClipLayers;
+import com.openmason.engine.rendering.model.draw.ModelPoseSolver;
+import com.openmason.engine.rig.JointPalette;
+import com.openmason.engine.rig.RigModel;
+import com.openmason.engine.rig.Skin;
 import com.stonebreak.world.World;
 import org.joml.Matrix4f;
-import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,10 +29,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Nothing here is hardcoded to a particular asset: the shape of a
  * (blockType, state) is the AABB of the SBO's model geometry <em>posed at the
- * state clip's end pose</em> — each part's vertices transformed by
- * {@code M_anim * M_rest⁻¹} with the part's authored rotation origin, the
- * exact math {@code SbeEntityRenderer} draws with. Re-export the asset with a
- * different hinge, size or swing and collision follows automatically.
+ * state clip's end pose</em> by the engine's native rig — the same posing and
+ * skinning {@code SbeEntityRenderer} draws with (skin matrices
+ * {@code W_pose · W_rest⁻¹}, deformed on the CPU by {@link Skin#deform}). Re-export
+ * the asset with a different hinge, size or swing and collision follows automatically.
  *
  * <p>Shapes are cached per (type, state); a failed computation falls back to
  * the full unit cell (safe, just blocky) and logs once.
@@ -122,43 +124,59 @@ public final class AnimatedBlockShapes {
         byte[] clipBytes = sbo.clipBytesFor(stateName);
         ParsedAnimClip clip = clipBytes != null ? new OMAReader().read(clipBytes) : null;
 
+        float[] box = settledAabb(geometry, clip);
+        logger.info("Settled model bounds for {} '{}': [{}, {}, {}] -> [{}, {}, {}]",
+                type.name(), stateName, box[0], box[1], box[2], box[3], box[4], box[5]);
+        return box;
+    }
+
+    /**
+     * Model-space AABB {@code {minX,minY,minZ,maxX,maxY,maxZ}} of the vertices the parts draw, posed at
+     * {@code clip}'s end pose (null clip = rest pose) — the pose a play-once clip holds, whatever the
+     * clip's own loop flag. {@link #UNIT_CELL} when the geometry draws nothing.
+     */
+    static float[] settledAabb(EntityGeometry geometry, ParsedAnimClip clip) {
+        ParsedAnimClip settled = clip;
+        if (clip != null && clip.loop()) {
+            // A looping clip would wrap its end time back to the start; the settled pose is the end.
+            settled = new ParsedAnimClip(clip.name(), clip.fps(), clip.duration(), false,
+                    clip.tracks(), clip.layer());
+        }
+        JointPalette palette = ModelPoseSolver.pose(geometry,
+                ClipLayers.single(settled, settled != null ? settled.duration() : 0f),
+                new Matrix4f(), 0f, 0f, null, new JointPalette());
+
+        RigModel rig = geometry.rig();
+        float[] vertices = geometry.vertices();
+        float[] posed;
+        if (rig.influences().isEmpty()) {
+            posed = Skin.deform(null, rig.partJointOfVertex(), vertices, palette, null);
+        } else {
+            try (Skin skin = rig.newSkin()) {
+                posed = Skin.deform(skin, rig.partJointOfVertex(), vertices, palette, null);
+            }
+        }
+
         float minX = Float.POSITIVE_INFINITY;
         float minY = Float.POSITIVE_INFINITY;
         float minZ = Float.POSITIVE_INFINITY;
         float maxX = Float.NEGATIVE_INFINITY;
         float maxY = Float.NEGATIVE_INFINITY;
         float maxZ = Float.NEGATIVE_INFINITY;
-
-        float[] vertices = geometry.vertices();
         int[] indices = geometry.indices();
-        Matrix4f pose = new Matrix4f();
-        Matrix4f restInverse = new Matrix4f();
-        Vector3f p = new Vector3f();
-
         for (EntityPart part : geometry.parts()) {
-            ParsedAnimTrack track = clip != null ? findTrack(clip, part) : null;
-            pose.identity();
-            if (track != null && !track.keyframes().isEmpty()) {
-                // End pose of the clip: what a play-once clip settles on.
-                AnimSampler.PartPose end = AnimSampler.sample(track, clip.duration());
-                partTransform(restInverse.identity(),
-                        part.restPos(), part.restRot(), part.restScale(), part.restOrigin())
-                        .invert();
-                partTransform(pose,
-                        end.position(), end.rotationDeg(), end.scale(), part.restOrigin())
-                        .mul(restInverse);
-            }
             for (EntityFace face : part.faces()) {
                 for (int i = face.indexStart(); i < face.indexStart() + face.indexCount(); i++) {
                     int vi = indices[i] * 3;
-                    p.set(vertices[vi], vertices[vi + 1], vertices[vi + 2]);
-                    pose.transformPosition(p);
-                    if (p.x < minX) minX = p.x;
-                    if (p.y < minY) minY = p.y;
-                    if (p.z < minZ) minZ = p.z;
-                    if (p.x > maxX) maxX = p.x;
-                    if (p.y > maxY) maxY = p.y;
-                    if (p.z > maxZ) maxZ = p.z;
+                    float x = posed[vi];
+                    float y = posed[vi + 1];
+                    float z = posed[vi + 2];
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (z < minZ) minZ = z;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
+                    if (z > maxZ) maxZ = z;
                 }
             }
         }
@@ -166,39 +184,7 @@ public final class AnimatedBlockShapes {
         if (minX > maxX) {
             return UNIT_CELL; // no geometry — shouldn't happen
         }
-        float[] box = {minX, minY, minZ, maxX, maxY, maxZ};
-        logger.info("Settled model bounds for {} '{}': [{}, {}, {}] -> [{}, {}, {}]",
-                type.name(), stateName, minX, minY, minZ, maxX, maxY, maxZ);
-        return box;
-    }
-
-    /** Track lookup mirroring SbeEntityRenderer: part id first, then part name. */
-    private static ParsedAnimTrack findTrack(ParsedAnimClip clip, EntityPart part) {
-        ParsedAnimTrack track = clip.trackByPartId().get(part.id());
-        if (track != null) return track;
-        for (ParsedAnimTrack t : clip.tracks()) {
-            if (part.name() != null && part.name().equals(t.partName())) {
-                return t;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Part-local TRS: {@code T(pos) · T(origin) · R(rotXYZ°) · S(scale) · T(-origin)}.
-     * Mirrors {@code SbePoseSolver.partTransform} — the two must stay in
-     * lockstep or collision drifts from what is rendered.
-     */
-    private static Matrix4f partTransform(Matrix4f dest, Vector3f pos, Vector3f rotDeg,
-                                          Vector3f scale, Vector3f origin) {
-        return dest
-                .translate(pos)
-                .translate(origin)
-                .rotateXYZ((float) Math.toRadians(rotDeg.x),
-                        (float) Math.toRadians(rotDeg.y),
-                        (float) Math.toRadians(rotDeg.z))
-                .scale(scale)
-                .translate(-origin.x, -origin.y, -origin.z);
+        return new float[]{minX, minY, minZ, maxX, maxY, maxZ};
     }
 
     private static String defaultStateOf(BlockType type) {

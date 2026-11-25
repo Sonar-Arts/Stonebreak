@@ -17,6 +17,8 @@ final class EntityAttachmentRenderer {
 
     private final SbeEntityRenderer sbeEntityRenderer;
     private final SocketItemQueue socketItems;
+    /** The host's posed joints, shared by its sockets this draw (GL thread only). */
+    private final com.openmason.engine.rig.JointPalette hostPose = new com.openmason.engine.rig.JointPalette();
 
     EntityAttachmentRenderer(SbeEntityRenderer sbeEntityRenderer, SocketItemQueue socketItems) {
         this.sbeEntityRenderer = sbeEntityRenderer;
@@ -41,11 +43,15 @@ final class EntityAttachmentRenderer {
                 com.stonebreak.mobs.sbe.EntityAttachments.get(entityKey);
         if (attached.isEmpty() || hostAsset == null) return;
 
+        com.openmason.engine.entity.model.EntityGeometry geometry = hostAsset.geometryFor(variantName);
+        if (geometry == null) return;
         Matrix4f base = SbePoseSolver.baseMatrix(position, yawDegrees, scale);
+        // Pose the host once for all of its sockets (the attached models' own draws pose again,
+        // so the palette is this renderer's, never the entity renderer's).
+        SbePoseSolver.pose(geometry, hostAsset, anim, base, headYawDeg, headPitchDeg, null, hostPose);
         Matrix4f socket = new Matrix4f();
         for (com.stonebreak.mobs.sbe.EntityAttachments.Attached a : attached) {
-            if (SbePoseSolver.socketWorldMatrix(hostAsset, variantName, anim, base,
-                    headYawDeg, headPitchDeg, a.socketName(), socket) == null) {
+            if (SbePoseSolver.socketWorldMatrix(geometry, hostPose, base, a.socketName(), socket) == null) {
                 continue;
             }
             switch (a.visual()) {

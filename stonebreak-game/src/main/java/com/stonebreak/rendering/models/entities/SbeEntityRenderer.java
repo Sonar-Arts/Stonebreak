@@ -7,7 +7,12 @@ import com.stonebreak.mobs.sbe.AnimState;
 import com.openmason.engine.entity.model.MaterialImage;
 import com.openmason.engine.entity.model.EntityAsset;
 import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.entity.model.EntityPart;
+import com.openmason.engine.rendering.model.draw.JointPaletteTexture;
+import com.openmason.engine.rendering.model.draw.ModelSkinGlsl;
 import com.openmason.engine.rendering.shaders.ShaderProgram;
+import com.openmason.engine.rig.JointPalette;
+import com.openmason.engine.rig.PackedSkin;
 import com.stonebreak.rendering.gameWorld.fog.GroundFog;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -22,6 +27,7 @@ import org.lwjgl.opengl.GL30;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.nio.ShortBuffer;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -29,6 +35,7 @@ import java.util.Map;
 import static org.lwjgl.system.MemoryUtil.memAllocFloat;
 import static org.lwjgl.system.MemoryUtil.memAllocInt;
 import static org.lwjgl.system.MemoryUtil.memAlloc;
+import static org.lwjgl.system.MemoryUtil.memAllocShort;
 import static org.lwjgl.system.MemoryUtil.memFree;
 import com.stonebreak.rendering.gameWorld.UnderwaterFog;
 import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
@@ -41,6 +48,13 @@ import com.stonebreak.rendering.gameWorld.weather.WeatherFog;
  * variant geometry, sampling the state's animation clip per part, and drawing
  * cached contiguous material batches for each part. It knows nothing about cows or any
  * specific entity type; callers supply the entity-specific bindings.
+ *
+ * <p>Posing is the engine's native rig ({@link SbePoseSolver#pose}): each draw poses the model once
+ * into a {@link JointPalette}, uploads it as a buffer texture ({@link JointPaletteTexture}, unit
+ * {@link JointPaletteTexture#DEFAULT_UNIT}) and the vertex shaders skin every vertex on the GPU
+ * ({@link ModelSkinGlsl}: per-vertex joints/weights on attributes 2/3; a rigid part's vertices carry
+ * its one joint at weight 1). Parts still draw in their own batches (per-part {@link Look} uniforms,
+ * material textures) with an identity {@code model} matrix.
  *
  * <p>GPU resources are uploaded lazily, per asset, on first render (on the GL
  * thread). Owned and driven by {@link EntityRenderer}.
@@ -121,11 +135,19 @@ public final class SbeEntityRenderer {
         this.look = look != null ? look : Look.NONE;
     }
 
+    /** Posed joints of the draw in flight (GL thread only). */
+    private final JointPalette palette = new JointPalette();
+    /** GPU copy of {@link #palette}, re-filled per draw. */
+    private final JointPaletteTexture paletteTexture = new JointPaletteTexture();
+    private static final Matrix4f IDENTITY = new Matrix4f();
+
     /** GPU resources for one variant of one asset. */
     private static final class VariantGpu {
         int vao;
         int vbo;
         int uvVbo;
+        int jointVbo;
+        int weightVbo;
         int ebo;
         SbeDrawPlan drawPlan;
         final Map<Integer, Integer> materialTextures = new HashMap<>();
@@ -147,6 +169,7 @@ public final class SbeEntityRenderer {
             #version 330 core
             layout (location = 0) in vec3 aPos;
             layout (location = 1) in vec2 aTexCoord;
+            """ + ModelSkinGlsl.VERTEX + """
 
             uniform mat4 model;
             uniform mat4 view;
@@ -157,7 +180,7 @@ public final class SbeEntityRenderer {
             out float ViewDepth;
 
             void main() {
-                vec4 worldPos = model * vec4(aPos, 1.0);
+                vec4 worldPos = model * skinPosition(aPos);
                 FragWorldPos = worldPos.xyz;
                 ViewDepth = -(view * worldPos).z;
                 gl_Position = projection * view * worldPos;
@@ -253,12 +276,16 @@ public final class SbeEntityRenderer {
             shader.createUniform("cameraPos");
             shader.createUniform("underwaterFogDensity");
             shader.createUniform("underwaterFogColor");
+            shader.createUniform("u_jointPalette");
+            shader.createUniform("u_skinned");
             // Lighting defaults: fully lit until the first draw sets the real
             // environment (or the UI preview rig, see applyUiPreviewLighting).
             shader.bind();
             shader.setFloat("u_ambientLight", UI_PREVIEW_AMBIENT);
             shader.setVec3("u_sunDirection", new Vector3f(0.4f, 0.8f, 0.4f).normalize());
             shader.setFloat("u_entityLight", 1.0f);
+            shader.setUniform("u_jointPalette", JointPaletteTexture.DEFAULT_UNIT);
+            shader.setUniform("u_skinned", false);
             GroundFog.applyDisabled(shader);
             // The shadow sampler must live on its own unit even while disabled —
             // sharing unit 0 with the 2D textureSampler is a GL error on strict drivers.
@@ -275,13 +302,14 @@ public final class SbeEntityRenderer {
         String vertexShader = """
             #version 330 core
             layout (location = 0) in vec3 aPos;
+            """ + ModelSkinGlsl.VERTEX + """
 
             uniform mat4 model;
             uniform mat4 view;
             uniform mat4 projection;
 
             void main() {
-                gl_Position = projection * view * model * vec4(aPos, 1.0);
+                gl_Position = projection * view * model * skinPosition(aPos);
             }
             """;
 
@@ -305,6 +333,12 @@ public final class SbeEntityRenderer {
             wireShader.createUniform("view");
             wireShader.createUniform("projection");
             wireShader.createUniform("color");
+            wireShader.createUniform("u_jointPalette");
+            wireShader.createUniform("u_skinned");
+            wireShader.bind();
+            wireShader.setUniform("u_jointPalette", JointPaletteTexture.DEFAULT_UNIT);
+            wireShader.setUniform("u_skinned", false);
+            wireShader.unbind();
         } catch (Exception e) {
             System.err.println("Failed to create SBE wireframe shader: " + e.getMessage());
         }
@@ -397,6 +431,8 @@ public final class SbeEntityRenderer {
 
         // Save GL state.
         int previousProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM);
+        int previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
         int previousTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         int previousVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
         boolean wasCullFaceEnabled = GL11.glIsEnabled(GL11.GL_CULL_FACE);
@@ -462,9 +498,10 @@ public final class SbeEntityRenderer {
             GL11.glDepthMask(false);
         }
 
-        SbePoseSolver.forEachPartMatrix(geometry, asset, anim, baseMatrix,
-                headYawDeg, headPitchDeg, overrides, (partMatrix, part) -> {
-            shader.setUniform("model", partMatrix);
+        beginSkin(shader, geometry, asset, anim, baseMatrix, headYawDeg, headPitchDeg, overrides);
+        java.util.List<EntityPart> parts = geometry.parts();
+        for (int i = 0; i < parts.size(); i++) {
+            EntityPart part = parts.get(i);
             if (look != Look.NONE) {
                 boolean glows = look.glowParts().contains(part.name());
                 shader.setFloat("u_alpha", glows ? look.glowAlpha() : look.bodyAlpha());
@@ -476,7 +513,8 @@ public final class SbeEntityRenderer {
                 GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
                         GL11.GL_UNSIGNED_INT, batch.byteOffset());
             }
-        });
+        }
+        endSkin(shader);
 
         if (translucent) {
             GL11.glDepthMask(true);
@@ -494,6 +532,7 @@ public final class SbeEntityRenderer {
         }
         GL20.glUseProgram(previousProgram);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
+        GL13.glActiveTexture(previousActiveTexture);
         GL30.glBindVertexArray(previousVertexArray);
     }
 
@@ -601,14 +640,12 @@ public final class SbeEntityRenderer {
 
         GL30.glBindVertexArray(gpu.vao);
 
-        SbePoseSolver.forEachPartMatrix(geometry, asset, AnimState.single(stateName, animationTime),
-                base, 0f, 0f, (partMatrix, part) -> {
-            wireShader.setUniform("model", partMatrix);
-            for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).untextured()) {
-                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
-                        GL11.GL_UNSIGNED_INT, batch.byteOffset());
-            }
-        });
+        int previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        beginSkin(wireShader, geometry, asset, AnimState.single(stateName, animationTime),
+                base, 0f, 0f, null);
+        drawUntexturedParts(geometry, gpu);
+        endSkin(wireShader);
+        GL13.glActiveTexture(previousActiveTexture);
 
         GL30.glBindVertexArray(0);
         wireShader.unbind();
@@ -694,14 +731,11 @@ public final class SbeEntityRenderer {
 
         GL30.glBindVertexArray(gpu.vao);
 
-        SbePoseSolver.forEachPartMatrix(geometry, asset, anim, baseMatrix,
-                headYawDeg, headPitchDeg, (partMatrix, part) -> {
-            wireShader.setUniform("model", partMatrix);
-            for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).untextured()) {
-                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
-                        GL11.GL_UNSIGNED_INT, batch.byteOffset());
-            }
-        });
+        int previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
+        beginSkin(wireShader, geometry, asset, anim, baseMatrix, headYawDeg, headPitchDeg, null);
+        drawUntexturedParts(geometry, gpu);
+        endSkin(wireShader);
+        GL13.glActiveTexture(previousActiveTexture);
 
         GL30.glBindVertexArray(0);
         wireShader.unbind();
@@ -711,6 +745,37 @@ public final class SbeEntityRenderer {
         }
         GL20.glUseProgram(previousProgram);
         GL30.glBindVertexArray(previousVertexArray);
+    }
+
+    /**
+     * Poses the model once (native rig), uploads the palette to its buffer texture on
+     * {@link JointPaletteTexture#DEFAULT_UNIT} and switches the bound {@code program} to GPU skinning
+     * with an identity {@code model}: every part then draws straight from the shared VAO.
+     */
+    private void beginSkin(ShaderProgram program, EntityGeometry geometry, EntityAsset asset, AnimState anim,
+                           Matrix4f baseMatrix, float headYawDeg, float headPitchDeg,
+                           SbePoseSolver.PartOverrides overrides) {
+        SbePoseSolver.pose(geometry, asset, anim, baseMatrix, headYawDeg, headPitchDeg, overrides, palette);
+        paletteTexture.upload(palette);
+        paletteTexture.bind(JointPaletteTexture.DEFAULT_UNIT);
+        program.setUniform("u_skinned", true);
+        program.setUniform("model", IDENTITY);
+    }
+
+    /** Back to rigid (unskinned) draws; unbinds the palette from its unit (active unit 0 after). */
+    private static void endSkin(ShaderProgram program) {
+        program.setUniform("u_skinned", false);
+        JointPaletteTexture.unbind(JointPaletteTexture.DEFAULT_UNIT);
+    }
+
+    /** Every part's untextured batches (flat / wireframe passes; skinning already bound). */
+    private static void drawUntexturedParts(EntityGeometry geometry, VariantGpu gpu) {
+        for (EntityPart part : geometry.parts()) {
+            for (IndexedDrawBatch batch : gpu.drawPlan.forPart(part).untextured()) {
+                GL11.glDrawElements(GL11.GL_TRIANGLES, batch.indexCount(),
+                        GL11.GL_UNSIGNED_INT, batch.byteOffset());
+            }
+        }
     }
 
     /**
@@ -831,6 +896,28 @@ public final class SbeEntityRenderer {
         GL20.glVertexAttribPointer(1, 2, GL11.GL_FLOAT, false, 2 * Float.BYTES, 0);
         GL20.glEnableVertexAttribArray(1);
 
+        // Skin attributes (ModelSkinGlsl, same layout as the engine ModelGpuMesh): 4 x uint16 joints
+        // on attribute 2, 4 x unorm8 weights on attribute 3. Rigid parts: their joint at weight 1.
+        PackedSkin skin = geometry.rig().packed();
+        int skinVertices = skin.vertexCount();
+        ShortBuffer jointBuffer = memAllocShort(Math.max(1, skin.joints().length));
+        jointBuffer.put(skin.joints()).flip();
+        gpu.jointVbo = GL15.glGenBuffers();
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, gpu.jointVbo);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, jointBuffer, GL15.GL_STATIC_DRAW);
+        GL30.glVertexAttribIPointer(ModelSkinGlsl.JOINTS_LOCATION, 4, GL11.GL_UNSIGNED_SHORT, 8, 0L);
+        GL20.glEnableVertexAttribArray(ModelSkinGlsl.JOINTS_LOCATION);
+        memFree(jointBuffer);
+
+        ByteBuffer weightBuffer = memAlloc(Math.max(1, skin.weights().length));
+        weightBuffer.put(skin.weights()).flip();
+        gpu.weightVbo = GL15.glGenBuffers();
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, gpu.weightVbo);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, weightBuffer, GL15.GL_STATIC_DRAW);
+        GL20.glVertexAttribPointer(ModelSkinGlsl.WEIGHTS_LOCATION, 4, GL11.GL_UNSIGNED_BYTE, true, 4, 0L);
+        GL20.glEnableVertexAttribArray(ModelSkinGlsl.WEIGHTS_LOCATION);
+        memFree(weightBuffer);
+
         IntBuffer indexBuffer = memAllocInt(geometry.indices().length);
         indexBuffer.put(geometry.indices()).flip();
         GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, gpu.ebo);
@@ -840,7 +927,8 @@ public final class SbeEntityRenderer {
 
         long meshBytes = (long) geometry.vertices().length * Float.BYTES
                 + (long) geometry.texCoords().length * Float.BYTES
-                + (long) geometry.indices().length * Integer.BYTES;
+                + (long) geometry.indices().length * Integer.BYTES
+                + (long) skinVertices * 12L;
         GpuMemoryTracker.getInstance().track(GpuMemoryTracker.Category.ENTITY_MESH, meshBytes);
         trackedMeshBytes += meshBytes;
 
@@ -893,6 +981,8 @@ public final class SbeEntityRenderer {
                 GL30.glDeleteVertexArrays(gpu.vao);
                 GL15.glDeleteBuffers(gpu.vbo);
                 GL15.glDeleteBuffers(gpu.uvVbo);
+                GL15.glDeleteBuffers(gpu.jointVbo);
+                GL15.glDeleteBuffers(gpu.weightVbo);
                 GL15.glDeleteBuffers(gpu.ebo);
                 for (int textureId : gpu.materialTextures.values()) {
                     GL11.glDeleteTextures(textureId);
@@ -900,6 +990,7 @@ public final class SbeEntityRenderer {
             }
         }
         assetGpu.clear();
+        paletteTexture.close();
 
         if (trackedMeshBytes > 0) {
             GpuMemoryTracker.getInstance()
