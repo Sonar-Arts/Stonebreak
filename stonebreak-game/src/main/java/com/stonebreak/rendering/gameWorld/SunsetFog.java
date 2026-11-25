@@ -24,6 +24,8 @@ public final class SunsetFog {
     private static float shadowHeight, band;
     private static final Vector3f aureole = new Vector3f();
     private static float aureoleWidth = 0.25f;
+    /** The final pass's exposure, which sunset_fog.glsl converts the fog colour for. */
+    private static float exposure = SkyLight.DAY_EXPOSURE;
     /** The sky's glow round the sun (sky.frag getSunContribution): its tint over sunlight, and strength. */
     private static final Vector3f AUREOLE_TINT = new Vector3f(1.0f, 0.8f, 0.5f);
     private static final float AUREOLE = 0.4f;
@@ -55,7 +57,8 @@ public final class SunsetFog {
      * @param edgeHeight    its edge's height opposite the sun (sine of elevation)
      * @param twilightBand  how strongly it shows (0 = not at all)
      * @param sunAureole    the sky's glow round the sun ({@link #sunAureole}); zero for none
-     * @param sky           this frame's sky, whose aerosol sets the aureole's width
+     * @param sky           this frame's sky, whose aerosol sets the aureole's width and whose
+     *                      exposure the fog colour is converted for (null: the day's)
      */
     public static synchronized void setTwilight(Vector3f earthShadow, float edgeHeight, float twilightBand,
                                                 Vector3f sunAureole, SkyLight sky) {
@@ -64,6 +67,7 @@ public final class SunsetFog {
         band = twilightBand;
         aureole.set(sunAureole);
         aureoleWidth = aureoleWidth(sky);
+        exposure = sky != null ? sky.exposure() : SkyLight.DAY_EXPOSURE;
     }
 
     /**
@@ -107,5 +111,6 @@ public final class SunsetFog {
         shader.setFloat("u_twilightBand", band);
         shader.setVec3("u_sunAureole", aureole);
         shader.setFloat("u_aureoleWidth", aureoleWidth);
+        shader.setFloat("u_exposure", exposure);
     }
 }

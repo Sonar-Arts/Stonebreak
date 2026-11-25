@@ -52,6 +52,8 @@ public class Settings {
     private boolean waterShaderEnabled = true;
     private boolean cloudsEnabled = true;
     private boolean godRaysEnabled = true;
+    /** The sun's glow: the painted sky's aureole round it (golden hour to blue hour), the land haze that matches it and the god-ray pass. */
+    private boolean bloomEnabled = true;
     private boolean shadowsEnabled = true;
 
     // HUD / multiplayer — show floating username tags above remote players' heads.
@@ -194,6 +196,7 @@ public class Settings {
             boolField("waterShaderEnabled", Settings::getWaterShaderEnabled, Settings::setWaterShaderEnabled),
             boolField("cloudsEnabled", Settings::getCloudsEnabled, Settings::setCloudsEnabled),
             boolField("godRaysEnabled", Settings::getGodRaysEnabled, Settings::setGodRaysEnabled),
+            boolField("bloomEnabled", Settings::getBloomEnabled, Settings::setBloomEnabled),
             boolField("shadowsEnabled", Settings::getShadowsEnabled, Settings::setShadowsEnabled),
             boolField("playerNameTagsEnabled", Settings::getPlayerNameTagsEnabled, Settings::setPlayerNameTagsEnabled),
             boolField("pauseSingleplayerWorld", Settings::getPauseSingleplayerWorld, Settings::setPauseSingleplayerWorld),
@@ -380,6 +383,18 @@ public class Settings {
     public boolean getWaterShaderEnabled() { return waterShaderEnabled; }
     public boolean getCloudsEnabled() { return cloudsEnabled; }
     public boolean getGodRaysEnabled() { return godRaysEnabled; }
+    public boolean getBloomEnabled() { return bloomEnabled; }
+
+    /**
+     * Whether the sun's glow is drawn this session: the saved {@link #getBloomEnabled()}, unless
+     * {@code -Dstonebreak.bloom=off} switches it off for this run only (sky captures, A/B tests).
+     * Never saved.
+     */
+    public boolean isBloomActive() {
+        return bloomEnabled && !BLOOM_DEV_OFF;
+    }
+
+    private static final boolean BLOOM_DEV_OFF = "off".equalsIgnoreCase(System.getProperty("stonebreak.bloom"));
     public boolean getShadowsEnabled() { return shadowsEnabled; }
     public boolean getPlayerNameTagsEnabled() { return playerNameTagsEnabled; }
     public boolean getPauseSingleplayerWorld() { return pauseSingleplayerWorld; }
@@ -491,6 +506,10 @@ public class Settings {
 
     public void setGodRaysEnabled(boolean godRaysEnabled) {
         this.godRaysEnabled = godRaysEnabled;
+    }
+
+    public void setBloomEnabled(boolean bloomEnabled) {
+        this.bloomEnabled = bloomEnabled;
     }
 
     public void setShadowsEnabled(boolean shadowsEnabled) {

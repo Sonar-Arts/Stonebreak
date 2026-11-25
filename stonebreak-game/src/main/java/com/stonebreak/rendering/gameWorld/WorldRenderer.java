@@ -267,17 +267,22 @@ public class WorldRenderer {
             weatherEffects.tintSky(sky.earthShadowColor(), earthShadow);
             earthShadowHeight = sky.earthShadowHeight();
             twilightBand = sky.twilightBand() * clear;
-            SunsetFog.sunAureole(sky, clear, seaHorizon, sunAureole);
+            // Bloom off: no painted glow round the sun, on the painted sky or on the land fogged
+            // toward it. (The physical sky's glow round it is the atmosphere's Mie scattering.)
+            float aureole = com.stonebreak.config.Settings.getInstance().isBloomActive() ? 1f : 0f;
+            SunsetFog.sunAureole(sky, clear * aureole, seaHorizon, sunAureole);
             weatherEffects.updateFogColor(sky);
             ambientLightLevel = com.stonebreak.rendering.lighting.SceneLight.ambient();
             skyParams = new SkyParams(sunDirection, sky.moonDir(), sky.moonLight(),
-                    weatherEffects.tintSky(sky.clearZenith(), new Vector3f()),
+                    weatherEffects.tintSky(sky.clearZenith(), new Vector3f()), sky.daylight(), seaHorizon,
+                    CELESTIAL_POLE, com.stonebreak.world.TimeOfDay.skyAngle(timeOfDay.getNormalizedTime()),
+                    totalTime, sky.exposure(), viewAltitudeKm(player),
+                    // The hand-painted sunset, through the golden hour to the blue hour.
+                    SkyLight.paintedSky(sunDirection),
                     weatherEffects.tintSky(sky.clearHorizon(), new Vector3f()),
                     weatherEffects.tintSky(sky.sunsetColor(), new Vector3f()), sky.sunsetCoverage(),
                     new Vector3f(sky.sunGlow()).mul(clear), sky.sunColor(),
-                    earthShadow, earthShadowHeight, twilightBand, sky.daylight(), seaHorizon, CELESTIAL_POLE,
-                    com.stonebreak.world.TimeOfDay.skyAngle(timeOfDay.getNormalizedTime()), totalTime,
-                    sky.aerosol());
+                    earthShadow, earthShadowHeight, twilightBand, sky.aerosol(), aureole);
         } else {
             sunDirection = new Vector3f(0.7f, 0.1f, 0.5f).normalize();
             keyDirection = sunDirection;
@@ -285,8 +290,9 @@ public class WorldRenderer {
             clearFogColor = skyColor;
             ambientLightLevel = 1.0f;
             skyParams = new SkyParams(sunDirection, new Vector3f(sunDirection).negate(), 0f,
-                    skyColor, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f, new Vector3f(),
-                    new Vector3f(1f), new Vector3f(), 0f, 0f, 1f, seaHorizon, CELESTIAL_POLE, 0f, totalTime, 1f);
+                    skyColor, 1f, seaHorizon, CELESTIAL_POLE, 0f, totalTime, SkyLight.DAY_EXPOSURE,
+                    viewAltitudeKm(player), 0f, new Vector3f(skyColor).mul(1.15f), new Vector3f(), -1f,
+                    new Vector3f(), new Vector3f(1f), new Vector3f(), 0f, 0f, 1f, 1f);
         }
 
         // Cube terrain: this world's stream events feed the region renderer (idempotent attach); publish
@@ -605,6 +611,15 @@ public class WorldRenderer {
         }
     }
     
+    /**
+     * The eye's height above sea level in kilometres (a block is a metre), for the
+     * atmosphere: never below the sea, which is the planet's surface.
+     */
+    private static float viewAltitudeKm(Player player) {
+        double above = player.getCamera().getPosition().y - WorldConfiguration.SEA_LEVEL;
+        return (float) Math.max(above, 0.0) / 1000f;
+    }
+
     /**
      * How much of the sky's light reaches the eye at each pixel through this
      * frame's cloud and rain (alpha), for screen-space effects such as god rays;

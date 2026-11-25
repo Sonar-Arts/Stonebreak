@@ -264,10 +264,15 @@ void main() {
                 : length(vWorldPos.xz - uCameraPos.xz);
         fogF = smoothstep(uFogStart, uFogEnd, fogDist);
     }
+    // Fogged on screen, as the world shader does (sunset_fog.glsl fogToScreen); not
+    // underwater, where the murk fills the frame unconverted.
+    bool onScreen = !uFogSpherical;
+    if (onScreen) color = fogToScreen(color);
     color = applyPrecipFog(color, uCameraPos, vWorldPos - uCameraPos,
             horizonFogColor(uFogColor, vWorldPos - uCameraPos), fogF);
     // The Shade's night fog lying on the ground in front of it.
     color = applyGroundFog(color, uCameraPos, vWorldPos - uCameraPos);
+    if (onScreen) color = fogFromScreen(color);
 
     // Behind the cloud in front of the surface (seen from above the clouds).
     color = behindClouds(color, uCameraPos, vWorldPos);

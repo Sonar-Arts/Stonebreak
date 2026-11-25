@@ -13,6 +13,9 @@ uniform float u_earthShadowHeight; // its edge's height opposite the sun (sine o
 uniform float u_twilightBand;   // how strongly it shows (0 = none)
 uniform vec3 u_sunAureole;      // the sky's glow round the sun (0 = none)
 uniform float u_aureoleWidth;   // its width, 1 - cos of the angle from the sun (wider in hazy air)
+uniform float u_exposure;       // the final pass's exposure (SkyLight.exposure); 0 if never set
+
+#include "/shaders/postfx/tone_curve.glsl"
 
 // SkyLight.SUNSET_SOFTNESS
 const float SUNSET_FOG_SOFTNESS = 0.3;
@@ -70,4 +73,23 @@ vec3 horizonFogColor(vec3 clearFog, vec3 toFragment) {
     vec3 level = normalize(vec3(flatDir.x, 0.0, flatDir.y));
     float sunDot = dot(level, u_sunDir3);
     return fog + u_sunAureole * exp(-pow(max(1.0 - sunDot, 0.0) / u_aureoleWidth, 1.5));
+}
+
+// The fog colours above are painted as what the screen shows, as sky.frag paints the
+// sky (which converts its colour for the tone map). So distance fog is mixed on screen,
+// as it always was: take the fragment to its screen colour, fog it there, and bring the
+// result back. Unfogged it comes back unchanged (to within the curve's last 0.5% below
+// white), fully fogged it is exactly the sky behind it, and part-way it blends as before.
+// (Mixing the converted fog colour in the scene instead runs away wherever the fog is
+// near white in a channel, as the sunset's red is: that channel's scene value is huge.)
+float fogExposure() {
+    return u_exposure > 0.0 ? u_exposure : 1.0;
+}
+
+vec3 fogToScreen(vec3 scene) {
+    return sceneToDisplay(scene, fogExposure());
+}
+
+vec3 fogFromScreen(vec3 display) {
+    return displayToScene(display, fogExposure());
 }

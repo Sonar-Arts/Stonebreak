@@ -496,20 +496,18 @@ public class Renderer {
                 : new org.joml.Vector3f(0.7f, 0.1f, 0.5f).normalize();
         float godRayStrength = !com.stonebreak.battletest.BattleTestSession.isActive()
                 && com.stonebreak.config.Settings.getInstance().getGodRaysEnabled()
+                // The shafts are the sun's glow streaked out, so bloom off takes them too.
+                && com.stonebreak.config.Settings.getInstance().isBloomActive()
                 ? computeGodRayStrength(sunDirection)
                 : 0.0f;
 
-        if (godRayStrength <= 0.001f) {
-            // Effect off or sun below the horizon — render directly to the default
-            // framebuffer, exactly the pre-post-processing path.
-            worldRenderer.renderWorld(world, player, totalTime);
-            return;
-        }
-
+        // Every frame renders into the HDR scene target and reaches the screen through the
+        // tone map; the god-ray effect skips itself when its strength is zero.
+        com.stonebreak.rendering.lighting.SkyLight sky = timeOfDay != null
+                ? com.stonebreak.rendering.lighting.SkyLight.of(timeOfDay)
+                : null;
         // Shafts take the sun's colour: white by day, reddening as it sets.
-        org.joml.Vector3f sunColor = timeOfDay != null
-                ? com.stonebreak.rendering.lighting.SkyLight.of(timeOfDay).sunColor()
-                : new org.joml.Vector3f(1f);
+        org.joml.Vector3f sunColor = sky != null ? sky.sunColor() : new org.joml.Vector3f(1f);
         postPipeline.beginFrame();
         worldRenderer.renderWorld(world, player, totalTime);
         postPipeline.endFrame(new PostFxFrameParams(
@@ -518,7 +516,9 @@ public class Renderer {
                 sunDirection,
                 sunColor,
                 godRayStrength,
-                worldRenderer.skyTransmittanceTexture(player)));
+                godRayStrength > 0.001f ? worldRenderer.skyTransmittanceTexture(player) : 0,
+                sky != null ? sky.exposure() : com.stonebreak.rendering.lighting.SkyLight.DAY_EXPOSURE,
+                sky != null ? sky.nightAdaptation() : 0f));
     }
 
     /**

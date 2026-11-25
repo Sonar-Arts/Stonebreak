@@ -237,12 +237,17 @@ void main() {
                         : length(fragPos.xz - u_viewPos.xz);
                 fogF = smoothstep(u_fogStart, u_fogEnd, fogDist);
             }
+            // Fogged on screen (sunset_fog.glsl fogToScreen). Not underwater: the murk
+            // fills the frame as it is cleared, unconverted, and the fog must match it.
+            bool onScreen = !u_fogSpherical;
+            vec3 fogged = onScreen ? fogToScreen(fragColor.rgb) : fragColor.rgb;
             // With the rain and snow in front of the fragment, and the sky's
             // own where the distance fog dissolves it into the sky.
-            fragColor.rgb = applyPrecipFog(fragColor.rgb, u_viewPos, fragPos - u_viewPos,
+            fogged = applyPrecipFog(fogged, u_viewPos, fragPos - u_viewPos,
                     horizonFogColor(u_fogColor, fragPos - u_viewPos), fogF);
             // The Shade's night fog lying on the ground in front of it.
-            fragColor.rgb = applyGroundFog(fragColor.rgb, u_viewPos, fragPos - u_viewPos);
+            fogged = applyGroundFog(fogged, u_viewPos, fragPos - u_viewPos);
+            fragColor.rgb = onScreen ? fogFromScreen(fogged) : fogged;
             // Only the translucent pass turns this on (WorldRenderer).
             fragColor.rgb = behindClouds(fragColor.rgb, u_viewPos, fragPos);
         }

@@ -20,9 +20,16 @@ import org.joml.Vector3f;
  *       −12°) and astronomical (−12° to −18°).</li>
  *   <li><b>Moonlight reads as blue.</b> Physically it is slightly reddened
  *       sunlight, about 4000 K. In dim light rod vision takes over (the Purkinje
- *       shift) and we see it as blue, which is why film grades night blue. A
- *       full-moon sky is indigo; a new-moon sky is close to black.</li>
+ *       shift) and we see it as blue, which is why film grades night blue. That
+ *       shift is not painted into the palette here: the moonlight and the night sky
+ *       stay close to their physical colours, and the final pass grades dim light
+ *       toward rod vision as the eye adapts ({@link #nightAdaptation}). A full-moon
+ *       sky is a dim blue; a new-moon sky is close to black.</li>
  * </ul>
+ *
+ * <p><b>Exposure.</b> The scene is tone mapped with the fitted ACES curve, whose toe
+ * would crush a dark scene, so the exposure rises as the sky darkens ({@link #exposure}),
+ * as an eye adapts: {@link #DAY_EXPOSURE} by day, more by night, most on a moonless one.
  *
  * <p>The golden hour is a warm band low on the sky, broad toward the sun and thin
  * opposite it; the zenith stays blue. Real twilight keeps a deep-blue zenith because
@@ -101,7 +108,11 @@ public record SkyLight(
          * widens the sun's aureole, strengthens the afterglow, hazes the horizon and scales
          * the aerosol share of the clouds' optical depth.
          */
-        float aerosol) {
+        float aerosol,
+        /* Multiplier on the scene's linear light before the tone map, keyed to the sun's elevation (and the moon's light at night). */
+        float exposure,
+        /* 0..1: how dark-adapted the eye is, for the final pass's Purkinje grade. 0 by day, 1 by nautical dusk. */
+        float nightAdaptation) {
 
     // Palette (linear, the game's sky colour space).
     private static final Vector3f DAY_ZENITH = new Vector3f(0.53f, 0.81f, 0.92f);
@@ -110,10 +121,12 @@ public record SkyLight(
     private static final Vector3f CIVIL_HORIZON = new Vector3f(0.30f, 0.30f, 0.42f);
     private static final Vector3f NAUTICAL_ZENITH = new Vector3f(0.09f, 0.11f, 0.29f);
     private static final Vector3f NAUTICAL_HORIZON = new Vector3f(0.18f, 0.17f, 0.30f);
-    private static final Vector3f FULL_MOON_ZENITH = new Vector3f(0.050f, 0.070f, 0.165f);
-    private static final Vector3f FULL_MOON_HORIZON = new Vector3f(0.085f, 0.105f, 0.190f);
-    private static final Vector3f NEW_MOON_ZENITH = new Vector3f(0.008f, 0.010f, 0.028f);
-    private static final Vector3f NEW_MOON_HORIZON = new Vector3f(0.016f, 0.020f, 0.040f);
+    // The night sky at half the blue it used to be painted with: the final pass's Purkinje
+    // grade supplies the rest (see the class comment).
+    private static final Vector3f FULL_MOON_ZENITH = new Vector3f(0.066f, 0.074f, 0.131f);
+    private static final Vector3f FULL_MOON_HORIZON = new Vector3f(0.099f, 0.108f, 0.156f);
+    private static final Vector3f NEW_MOON_ZENITH = new Vector3f(0.010f, 0.011f, 0.022f);
+    private static final Vector3f NEW_MOON_HORIZON = new Vector3f(0.019f, 0.021f, 0.032f);
     /** The afterglow over the set sun: deeper and redder than the gold. */
     private static final Vector3f AFTERGLOW = new Vector3f(0.95f, 0.36f, 0.16f);
     /** Low sunlight: the gold between the noon white and the horizon's {@link #SUNSET} orange. */
@@ -152,8 +165,27 @@ public record SkyLight(
     static final float SUNSET_SOFTNESS = 0.3f;
     /** Aerosol at dusk and at dawn, relative to a clear day's (see {@link #aerosol}). */
     static final float AEROSOL_DUSK = 1.3f, AEROSOL_DAWN = 0.75f;
-    /** Moonlight on the ground: desaturated cool blue (see the class comment). */
-    private static final Vector3f MOONLIGHT = new Vector3f(0.70f, 0.80f, 1.0f);
+    /**
+     * Moonlight on the ground: reflected sunlight, a touch warm (about 4000 K, softened). It reads
+     * blue only through the final pass's Purkinje grade (see the class comment).
+     */
+    private static final Vector3f MOONLIGHT = new Vector3f(1.0f, 0.96f, 0.90f);
+
+    /**
+     * Exposure (multiplier on linear light before the fitted ACES curve) by day, through the
+     * sunset and the blue hour, measured as the best match of the tone-mapped image to the
+     * pre-HDR one: the curve's shoulder wants a little under 1.
+     */
+    public static final float DAY_EXPOSURE = 0.82f;
+    /** Exposure at the end of nautical twilight, where the sky has dimmed past the curve's knee. */
+    static final float NAUTICAL_EXPOSURE = 1.0f;
+    /**
+     * Exposure in full night, moonless and under a full moon. In the dark the curve's toe
+     * (slope ~0.21 in linear light) would crush everything; the moonless night wants the most.
+     */
+    static final float NEW_MOON_EXPOSURE = 3.9f, FULL_MOON_EXPOSURE = 1.7f;
+    /** Sun elevations (degrees) over which the eye dark-adapts, for {@link #nightAdaptation}. */
+    private static final float ADAPT_START = -4f, ADAPT_FULL = -12f;
 
     /**
      * Sun elevations (degrees) where the palette's stops sit: the real bands, with the
@@ -183,8 +215,27 @@ public record SkyLight(
     /** Sun elevation (y) below which the moon becomes the key light. The sun's own shadows are gone by then. */
     static final float KEY_SWITCH_Y = -0.05f;
 
+    /**
+     * Sun elevations (degrees) where the hand-painted sky takes over from the physical one
+     * ({@link #paintedSky}): it grows in from {@link #PAINTED_FROM} with the golden hour, is the
+     * whole sky by {@link #PAINTED_FULL} and through the sunset and the blue hour, and hands the
+     * sky back to the physical night from {@link #PAINTED_UNTIL} to {@link #PAINTED_GONE}.
+     */
+    static final float PAINTED_FROM = 22f, PAINTED_FULL = 12f, PAINTED_UNTIL = -6f, PAINTED_GONE = -12f;
+
     private static SkyLight last;
     private static long lastTicks = Long.MIN_VALUE;
+
+    /**
+     * How much of the sky is the hand-painted one for a sun in direction {@code sunDir}, 0..1:
+     * the game's own sunset (the gold, the afterglow, the Earth's shadow and the Belt of
+     * Venus) from the golden hour through the blue hour; the physical atmosphere by day and
+     * by night. The same at dawn.
+     */
+    public static float paintedSky(Vector3f sunDir) {
+        float elevation = (float) Math.toDegrees(Math.asin(Math.clamp(sunDir.y, -1f, 1f)));
+        return smoothstep(PAINTED_FROM, PAINTED_FULL, elevation) * (1f - smoothstep(PAINTED_UNTIL, PAINTED_GONE, elevation));
+    }
 
     /** The sky at {@code time}'s moment; the last result is kept, since every pass asks each frame. */
     public static SkyLight of(TimeOfDay time) {
@@ -276,10 +327,36 @@ public record SkyLight(
             keyDir = new Vector3f(sunDir);
             keyLight = new Vector3f(sunLight);
         }
+        float nightAdaptation = smoothstep(ADAPT_START, ADAPT_FULL, sunElevation);
         return new SkyLight(new Vector3f(sunDir), new Vector3f(moonDir), phase, moonLight,
                 zenith, horizon, clearZenith, clearHorizon, sunsetColor, coverage,
                 sunGlow, sunColor, sunLight, new Vector3f(clearHorizon), earthShadowHeight, twilightBand,
-                skyColor, daylight, evening, ambient, keyDir, keyLight, keyIsMoon, aerosol);
+                skyColor, daylight, evening, ambient, keyDir, keyLight, keyIsMoon, aerosol,
+                exposure(sunElevation, moonLight), nightAdaptation);
+    }
+
+    /**
+     * The exposure for a sun {@code sunElevation} degrees up: {@link #DAY_EXPOSURE} down to the
+     * blue hour's end (−6°), {@link #NAUTICAL_EXPOSURE} at nautical dusk (−12°), and the night's
+     * by astronomical dusk (−18°), between {@link #NEW_MOON_EXPOSURE} and
+     * {@link #FULL_MOON_EXPOSURE} by the moon's light. Eased in log space, as the eye adapts.
+     */
+    static float exposure(float sunElevation, float moonLight) {
+        float night = (float) Math.exp(lerp((float) Math.log(NEW_MOON_EXPOSURE),
+                (float) Math.log(FULL_MOON_EXPOSURE), moonLight));
+        float ev;
+        if (sunElevation >= -6f) {
+            return DAY_EXPOSURE;
+        } else if (sunElevation >= NAUTICAL) {
+            ev = lerp(log2(DAY_EXPOSURE), log2(NAUTICAL_EXPOSURE), smoothstep(-6f, NAUTICAL, sunElevation));
+        } else {
+            ev = lerp(log2(NAUTICAL_EXPOSURE), log2(night), smoothstep(NAUTICAL, ASTRONOMICAL, sunElevation));
+        }
+        return (float) Math.pow(2.0, ev);
+    }
+
+    private static float log2(float x) {
+        return (float) (Math.log(x) / Math.log(2.0));
     }
 
     /**

@@ -197,12 +197,38 @@ class SkyLightTest {
         }
         SkyLight midnight = at(MoonCycle.CYCLE_DAYS / 2, TimeOfDay.MIDNIGHT);
         assertTrue(midnight.keyIsMoon());
-        assertTrue(midnight.keyLight().z > midnight.keyLight().x, "moonlight is cool");
+        // Moonlight is reflected sunlight, a touch warm: its blue is the final pass's
+        // Purkinje grade (nightAdaptation), not painted into the key light.
+        assertTrue(midnight.keyLight().x >= midnight.keyLight().z, "moonlight is not painted blue");
         assertTrue(midnight.keyLight().z <= SkyLight.MOON_KEY + 1e-6f, "and faint");
         // At the hand-over the moon's light starts from nothing, so shadows never jump.
         SkyLight handover = SkyLight.compute(new Vector3f(1f, SkyLight.KEY_SWITCH_Y - 0.001f, 0f).normalize(),
                 midnight.moonDir(), 0.5f, 0.3f);
         assertTrue(handover.keyIsMoon());
         assertTrue(handover.keyLight().length() < 0.02f);
+    }
+
+    @Test
+    void exposureIsTheDaysUntilTheBlueHourEndsThenRisesIntoTheNight() {
+        SkyLight noon = at(MoonCycle.CYCLE_DAYS / 2, TimeOfDay.NOON);
+        assertEquals(SkyLight.DAY_EXPOSURE, noon.exposure(), 1e-6f);
+        assertEquals(SkyLight.DAY_EXPOSURE, SkyLight.exposure(-6f, 0f), 1e-6f);
+        assertEquals(SkyLight.NAUTICAL_EXPOSURE, SkyLight.exposure(-12f, 0f), 1e-4f);
+        assertEquals(SkyLight.NEW_MOON_EXPOSURE, SkyLight.exposure(-18f, 0f), 1e-4f);
+        assertEquals(SkyLight.FULL_MOON_EXPOSURE, SkyLight.exposure(-30f, 1f), 1e-4f);
+        float previous = SkyLight.exposure(10f, 0.5f);
+        for (float elevation = 10f; elevation >= -30f; elevation -= 0.5f) {
+            float e = SkyLight.exposure(elevation, 0.5f);
+            assertTrue(e >= previous - 1e-6f, "never falls as the sun sinks, at " + elevation);
+            previous = e;
+        }
+        // A moonless night is darker, so it is exposed more.
+        assertTrue(SkyLight.exposure(-20f, 0f) > SkyLight.exposure(-20f, 1f));
+    }
+
+    @Test
+    void theEyeDarkAdaptsThroughTwilight() {
+        assertEquals(0f, at(MoonCycle.CYCLE_DAYS / 2, TimeOfDay.NOON).nightAdaptation(), 1e-6f);
+        assertEquals(1f, at(MoonCycle.CYCLE_DAYS / 2, TimeOfDay.MIDNIGHT).nightAdaptation(), 1e-6f);
     }
 }

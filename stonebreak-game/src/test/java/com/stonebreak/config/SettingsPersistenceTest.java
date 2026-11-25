@@ -42,6 +42,7 @@ class SettingsPersistenceTest {
         s.setWaterShaderEnabled(false);
         s.setCloudsEnabled(false);
         s.setGodRaysEnabled(false);
+        s.setBloomEnabled(false);
         s.setShadowsEnabled(false);
         s.setPlayerNameTagsEnabled(false);
         s.setPauseSingleplayerWorld(true);
@@ -88,6 +89,7 @@ class SettingsPersistenceTest {
         assertEquals(expected.getWaterShaderEnabled(), actual.getWaterShaderEnabled());
         assertEquals(expected.getCloudsEnabled(), actual.getCloudsEnabled());
         assertEquals(expected.getGodRaysEnabled(), actual.getGodRaysEnabled());
+        assertEquals(expected.getBloomEnabled(), actual.getBloomEnabled());
         assertEquals(expected.getShadowsEnabled(), actual.getShadowsEnabled());
         assertEquals(expected.getPlayerNameTagsEnabled(), actual.getPlayerNameTagsEnabled());
         assertEquals(expected.getPauseSingleplayerWorld(), actual.getPauseSingleplayerWorld());
@@ -138,7 +140,7 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(46, tree.size());
+        assertEquals(47, tree.size());
         assertTrue(tree.has("connectedShapes"));
         assertTrue(tree.has("verticalRenderDistance"));
         assertTrue(tree.has("selectedAccessory"));
