@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class FirstPersonFistTopologyTest {
     @Test
     void exportedFistIsOneClosedConsistentlyWoundShell() {
-        var geometry = GameSbeAssets.load(FirstPersonArmPose.RESOURCE).geometryFor("Default");
+        var geometry = GameSbeAssets.load(com.stonebreak.player.animation.PlayerAnimationSet.FP_ARM_ASSET).geometryFor("Default");
         var fist = geometry.parts().stream().filter(p -> p.name().equals("fist")).findFirst().orElseThrow();
         // Render vertices split at face/UV seams; compare the shared geometric positions.
         Map<Vector3f, Integer> vertices = new HashMap<>();

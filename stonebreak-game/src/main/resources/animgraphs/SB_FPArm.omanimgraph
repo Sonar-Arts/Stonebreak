@@ -1,0 +1,24 @@
+{
+  "format": "omanimgraph",
+  "version": "1.1",
+  "name": "SB_FPArm",
+  "parameters": [
+    {"name": "attacking", "type": "bool"}
+  ],
+  "slots": ["idle", "attacking"],
+  "masks": [
+    {"name": "arm", "entries": [{"joint": "ac26bca3-7fba-4e75-9080-9a0cc0706346"}]}
+  ],
+  "root": "layered",
+  "nodes": [
+    {"id": "idle", "type": "clip", "slot": "idle"},
+    {"id": "punch", "type": "clip", "slot": "attacking"},
+    {"id": "upper", "type": "stateMachine", "entry": "ready",
+     "states": [{"name": "ready", "node": "idle"}, {"name": "punch", "node": "punch"}],
+     "transitions": [
+       {"from": "ready", "to": "punch", "conditions": [{"param": "attacking"}], "blend": 0.08, "mode": "crossfade"},
+       {"from": "punch", "to": "ready", "exitTime": 0.846154, "blend": 0.12, "mode": "crossfade"}
+     ]},
+    {"id": "layered", "type": "layer", "base": "idle", "layers": [{"node": "upper", "mask": "arm"}]}
+  ]
+}

@@ -63,6 +63,37 @@ final class EntityAttachmentRenderer {
         }
     }
 
+    /**
+     * {@link #render} for a host already posed in MODEL space by its animation graph (#457): every socket is read
+     * from that palette and put under the host's {@code base} transform, so attachments follow the drawn pose.
+     */
+    void renderPosed(Object entityKey, com.openmason.engine.entity.model.EntityAsset hostAsset, String variantName,
+                     com.openmason.engine.rig.JointPalette posed, Matrix4f base,
+                     Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                     com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
+        java.util.List<com.stonebreak.mobs.sbe.EntityAttachments.Attached> attached =
+                com.stonebreak.mobs.sbe.EntityAttachments.get(entityKey);
+        if (attached.isEmpty() || hostAsset == null || posed == null) return;
+        com.openmason.engine.entity.model.EntityGeometry geometry = hostAsset.geometryFor(variantName);
+        if (geometry == null) return;
+        Matrix4f modelSpace = new Matrix4f();
+        Matrix4f socket = new Matrix4f();
+        for (com.stonebreak.mobs.sbe.EntityAttachments.Attached a : attached) {
+            if (SbePoseSolver.socketWorldMatrix(geometry, posed, MODEL_ORIGIN, a.socketName(), modelSpace) == null) {
+                continue;
+            }
+            base.mul(modelSpace, socket);
+            switch (a.visual()) {
+                case AttachmentVisual.Model model -> renderModel(model, socket,
+                        viewMatrix, projectionMatrix, world, cameraPos);
+                case AttachmentVisual.Item item -> socketItems.add(item.type(), item.state(), socket);
+            }
+        }
+    }
+
+    /** The model-space base of a palette posed without one. */
+    private static final Matrix4f MODEL_ORIGIN = new Matrix4f();
+
     private void renderModel(AttachmentVisual.Model model, Matrix4f socket,
                              Matrix4f viewMatrix, Matrix4f projectionMatrix,
                              com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {

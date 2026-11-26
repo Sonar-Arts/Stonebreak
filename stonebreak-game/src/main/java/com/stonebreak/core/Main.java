@@ -456,6 +456,12 @@ public class Main {
                     System.out.println("[autoview] weather set to " + mode);
                 }
             }
+            // -Dstonebreak.autoperspective=third: the third-person body (shots of the player's pose, #457).
+            if ("third".equalsIgnoreCase(System.getProperty("stonebreak.autoperspective", "").trim())
+                    && Game.getPlayer() != null && !Game.getPlayer().isThirdPerson()) {
+                Game.getPlayer().togglePerspective();
+                System.out.println("[autoview] third person");
+            }
             String lod = System.getProperty("stonebreak.autolod");
             if (lod != null && !lod.isBlank()) {
                 String[] p = lod.split(":");

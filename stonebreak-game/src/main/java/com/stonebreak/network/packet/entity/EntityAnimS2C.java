@@ -22,10 +22,8 @@ import io.netty.buffer.ByteBuf;
  * wing-flap over walking), replicating them minimally means appending an optional overlay
  * state string + active flag here (bump {@code ProtocolVersion}, mirror in
  * {@code ServerEntityHandler}'s anim packet emission and {@code ClientWorldView}'s apply
- * path, feeding an {@code OverlayAnimState} on the shadow). Remote-player attack overlays
- * are a separate gap: attack was never replicated at all — that needs a new
- * {@code PlayerActionS2C(networkId, overlayState, active)} packet driving an
- * {@code OverlayAnimState} on {@code RemotePlayer}.
+ * path, feeding an overlay on the shadow). Remote players are not on this packet: their
+ * body graph (#457) poses from the replicated {@code PlayerStateFlags} (ATTACKING included).
  */
 public record EntityAnimS2C(int networkId, String state) implements Packet {
 

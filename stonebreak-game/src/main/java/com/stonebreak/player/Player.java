@@ -77,7 +77,6 @@ public class Player {
     private Perspective perspective = Perspective.FIRST_PERSON;
     private final PlayerBodyAnimation bodyAnimation = new PlayerBodyAnimation();
     private final com.stonebreak.vehicles.PlayerRiding riding = new com.stonebreak.vehicles.PlayerRiding();
-    private static final float WALK_SPEED_THRESHOLD = 0.5f; // blocks/second
 
     public Player(World world) {
         this.state = new PhysicsState();
@@ -364,47 +363,43 @@ public class Player {
      */
     public float getThirdPersonHeadPitch() { return bodyAnimation.getBodyOrientation().getHeadPitch(camera.getPitch()); }
 
-    /** Body clock, synchronized with foot contacts during walking and sprinting. */
-    public float getBodyAnimationTime() { return bodyAnimation.getBodyAnimationTime(); }
-
     /**
-     * Animation time to feed for one-shot BASE clips (Jumping). Attack is no
-     * longer part of the base state — it plays as an overlay with its own
-     * clock (see {@link #getAttackOverlay()}).
+     * This player's body pose (#457): the player animation graph's instance, posed once per tick in model space. The
+     * third-person figure, its shadow and the menu preview draw its palette; null before the first tick.
      */
-    public float getBodyEventTime() {
-        if (getBaseMovementState() == com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.JUMPING) {
-            return bodyAnimation.getJumpEventTime();
-        }
-        return bodyAnimation.getBodyAnimationTime();
-    }
+    public com.stonebreak.player.animation.PlayerBodyAnimator getBodyAnimator() { return bodyAnimation.animator(); }
 
-    /**
-     * The base locomotion state: JUMPING &gt; SPRINTING/WALKING &gt; IDLE. Attacking is
-     * NOT considered — it renders as an overlay on top of this, so the legs
-     * keep walking mid-swing.
-     */
-    public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getBaseMovementState() {
-        if (riding.isRiding()) {
-            return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.SITTING;
-        }
+    /** Horizontal speed, blocks per second (the body graph's {@code speed}). */
+    public float getHorizontalSpeed() {
         Vector3f vel = state.getVelocity();
-        float horizSpeed = (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
-        return com.stonebreak.mobs.sbe.PlayerStateMapping.locomotion(horizSpeed > WALK_SPEED_THRESHOLD,
-                state.isOnGround(), state.isPhysicallyInWater(), c.stamina.isSprinting());
+        return (float) Math.sqrt(vel.x * vel.x + vel.z * vel.z);
     }
 
     /**
-     * Single collapsed state, kept for callers that predate animation mixing
-     * (attack still wins here).
+     * The movement/action flags this player replicates ({@link com.stonebreak.network.packet.player.PlayerStateFlags}):
+     * what {@code PlayerStateC2S} reports and what this player's own body animates from, so a remote copy of it
+     * poses the same.
      */
-    public com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState getMovementState() {
-        if (c.attack.isAttacking()) return com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING;
-        return getBaseMovementState();
+    public short stateFlags() {
+        short flags = 0;
+        if (isSprinting()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.SPRINTING;
+        if (isInWater()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.SWIMMING;
+        if (isPhysicallyInWater()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.PARTIALLY_IN_WATER;
+        if (!isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE;
+        if (isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND;
+        if (isAttacking()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;
+        if (getStealth().isStealthed()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.STEALTHED;
+        if (getDodge().isMakingNoise()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DODGE_NOISE;
+        if (getBreakingBlock() != null) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.MINING;
+        // #343: what the server needs to resolve the player's health - flight voids falls and cactus contact, a
+        // dodge's i-frames negate blows, Rage T3 heals by lifesteal.
+        if (isFlying()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.FLYING;
+        if (getDodge().isInvincible()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DODGING;
+        if (getBerserkerAbilities().getRage().getTier().atLeast(com.stonebreak.player.combat.RageTier.T3)) {
+            flags |= com.stonebreak.network.packet.player.PlayerStateFlags.LIFESTEAL;
+        }
+        return flags;
     }
-
-    /** Envelope tracker for the attack overlay animation (time + fade weight). */
-    public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return bodyAnimation.getAttackOverlay(); }
 
     /** Melee stats of the held item ({@link WeaponStats#UNARMED} for an empty hand or non-weapon). */
     public WeaponStats getHeldWeapon() {

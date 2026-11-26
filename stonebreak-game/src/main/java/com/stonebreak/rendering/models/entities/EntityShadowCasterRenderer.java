@@ -22,7 +22,6 @@ final class EntityShadowCasterRenderer {
     private final SbeMobRenderer mobRenderer;
     private final Matrix4f lightViewProjection = new Matrix4f();
     private final FrustumIntersection lightFrustum = new FrustumIntersection();
-    private final Vector3f unitScale = new Vector3f(1f);
     private final Vector3f centerScratch = new Vector3f();
     private final Vector3f playerScratch = new Vector3f();
     private record Caster(Entity entity, Vector3f position, float height, float bound) {}
@@ -83,21 +82,21 @@ final class EntityShadowCasterRenderer {
             renderEntityShadow(caster.entity, lightView, lightProj);
         }
 
-        // The local player always casts — including first person, where the body
-        // model isn't drawn to screen but its shadow still should be.
+        // The local player always casts - including first person, where the body model isn't drawn to screen but
+        // its shadow still should be. Its graph palette = the drawn pose (head look, attack layer included).
         Vector3f playerRender = player != null ? RenderOrigin.toRender(player.getPosition(), playerScratch) : null;
         if (player != null && lightFrustum.testSphere(playerRender.x,
                 playerRender.y + 1f, playerRender.z, 2f)) {
-            com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
-            if (asset != null) {
-                sbeEntityRenderer.renderColored(asset,
-                        com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT,
-                        com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getBaseMovementState()),
-                        player.getBodyEventTime(),
-                        player.getPosition(), player.getBodyYaw(), unitScale,
-                        lightView, lightProj, SHADOW_CASTER_COLOR);
-            }
+            castBody(PosedPlayerBody.of(player), lightView, lightProj);
         }
+    }
+
+    /** Depth-only draw of a player-shaped body: the palette and base its figure draws. */
+    private void castBody(PosedPlayerBody body, Matrix4f lightView, Matrix4f lightProj) {
+        if (body == null) return;
+        sbeEntityRenderer.renderColoredPosed(body.asset(),
+                com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT, body.palette(), body.base(),
+                lightView, lightProj, SHADOW_CASTER_COLOR);
     }
 
     /** Depth-only draw of one entity, mirroring {@link EntityRenderer#renderEntity}'s SBE bindings. */
@@ -117,15 +116,9 @@ final class EntityShadowCasterRenderer {
 
         if ((type == EntityType.REMOTE_PLAYER || type == EntityType.ILLUSION_DECOY)
                 && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
-            com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
-            if (asset != null) {
-                sbeEntityRenderer.renderColored(asset,
-                        com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT,
-                        com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
-                        rp.getBodyAnimationTime(),
-                        rp.getPosition(), rp.getBodyYaw(), rp.getScale(),
-                        lightView, lightProj, SHADOW_CASTER_COLOR);
-            }
+            // The body's own graph palette: the shadow is the drawn pose (#457).
+            castBody(PosedPlayerBody.of(rp), lightView, lightProj);
+            return;
         }
         if (type == EntityType.DINGHY) {
             com.openmason.engine.entity.model.EntityAsset asset =

@@ -3,9 +3,6 @@ package com.stonebreak.mobs.entities;
 import com.stonebreak.blocks.BlockType;
 import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.mobs.sbe.PlayerStateMapping;
-import com.stonebreak.mobs.sbe.PlayerGaitClock;
-import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.Renderer;
@@ -22,15 +19,13 @@ import org.joml.Vector3f;
 public class RemotePlayer extends LivingEntity {
 
     /**
-     * No stride-counted mob footsteps: a player shadow steps on its gait clock's foot contacts
-     * instead ({@link #updateClientVisuals}), the same signal the local player's own steps use.
+     * No stride-counted mob footsteps: a player shadow steps on its body's foot contacts instead
+     * ({@link #updateClientVisuals}), the same signal the local player's own steps use.
      */
     @Override
     protected boolean hasFootsteps() {
         return false;
     }
-
-    private static final float WALK_THRESHOLD = 0.5f; // blocks/second, matching the local player
 
     private final int playerId;
     private final String username;
@@ -46,11 +41,31 @@ public class RemotePlayer extends LivingEntity {
      */
     private volatile Item heldItem;
 
-    private PlayerStateMapping.PlayerMovementState movementState = PlayerStateMapping.PlayerMovementState.IDLE;
     private Vector3d prevPosition;
-    private final PlayerGaitClock gaitClock = new PlayerGaitClock();
-    /** Whether the last {@link #updateMovementAnimation} planted a foot (walk/run only). */
+    /**
+     * This body's pose (#457): the player animation graph's own instance, fed the replicated flags + displacement
+     * through the same {@link com.stonebreak.player.animation.PlayerPoseInputs} as the local player. Client only
+     * (created on the first visual update); null on the server.
+     */
+    private com.stonebreak.player.animation.PlayerBodyAnimator bodyAnimator;
+    private final com.stonebreak.player.animation.PlayerPoseInputs poseInputs =
+        new com.stonebreak.player.animation.PlayerPoseInputs();
+    /** Horizontal speed estimated from the last displacement (blocks/second). */
+    private float horizontalSpeed;
+    /** Whether the last body update planted a foot. */
     private boolean footContact;
+    private final com.stonebreak.player.animation.PlayerBodyAnimator.Events bodyEvents =
+        new com.stonebreak.player.animation.PlayerBodyAnimator.Events() {
+            @Override
+            public void footstep() {
+                footContact = true;
+            }
+
+            @Override
+            public void event(String name) {
+                com.stonebreak.player.animation.PlayerAnimEvents.assetEvent(name, position);
+            }
+        };
 
     /**
      * Body facing / head-swivel logic, shared with the local player's third-person view.
@@ -68,12 +83,6 @@ public class RemotePlayer extends LivingEntity {
 
     /** Latest replicated movement/action flags ({@code PlayerStateFlags} bits). */
     private volatile short stateFlags;
-    /**
-     * Full authored punch triggered by the replicated ATTACKING flag, independent
-     * of the short gameplay pulse, matching the local player's body animation.
-     */
-    private final com.stonebreak.mobs.sbe.PlayerAttackAnimation attackAnimation =
-        new com.stonebreak.mobs.sbe.PlayerAttackAnimation();
 
     /**
      * Splash/ripple FX, the same as {@link Player}'s ({@link com.stonebreak.fx.bindings.SwimFx}), but
@@ -101,7 +110,6 @@ public class RemotePlayer extends LivingEntity {
         receivedFirstState = true;
     }
     public short getStateFlags() { return stateFlags; }
-    public com.stonebreak.mobs.sbe.OverlayAnimState getAttackOverlay() { return attackAnimation.overlay(); }
 
     public RemotePlayer(World world, Vector3dc position, int playerId, String username) {
         super(world, position, EntityType.REMOTE_PLAYER);
@@ -156,12 +164,14 @@ public class RemotePlayer extends LivingEntity {
         this.heldItemId = item == null ? 0 : item.getId();
     }
 
-    public PlayerStateMapping.PlayerMovementState getMovementState() { return movementState; }
+    /**
+     * This body's animator (its graph palette is what the figure, its shadow and wireframe draw); null until the
+     * first client visual update.
+     */
+    public com.stonebreak.player.animation.PlayerBodyAnimator bodyAnimator() { return bodyAnimator; }
 
-    /** Shared phase for the body and its shadow, retained when changing walk/sprint pace. */
-    public float getBodyAnimationTime() {
-        return gaitClock.isActive() ? gaitClock.timeSeconds() : clipClock.totalTime();
-    }
+    /** Horizontal speed from the last displacement, blocks/second (the body graph's {@code speed}). */
+    public float getHorizontalSpeed() { return horizontalSpeed; }
 
     /** Body facing in SBE model space (degrees) — what renderers should rotate the figure by. */
     public float getBodyYaw() { return bodyOrientation.getBodyYaw(); }
@@ -197,17 +207,15 @@ public class RemotePlayer extends LivingEntity {
     }
 
     /**
-     * Derives walk/idle from horizontal displacement since the last call and
-     * advances the animation clock. Extracted so subclasses driven externally
-     * (e.g. {@link IllusionDecoy}, moved by mirroring its owner rather than the network)
-     * can reuse the same state/animation derivation after repositioning.
+     * Derives speed and facing from the horizontal displacement since the last call. Extracted so subclasses driven
+     * externally (e.g. {@link IllusionDecoy}, moved by mirroring its owner rather than the network) can reuse the same
+     * derivation after repositioning. Server-safe: the pose itself is {@link #animateBody} (client only).
      */
     protected void updateMovementAnimation(float deltaTime) {
         float dx = (float) (position.x - prevPosition.x);
         float dy = (float) (position.y - prevPosition.y);
         float dz = (float) (position.z - prevPosition.z);
-        float horizDist = (float) Math.sqrt(dx * dx + dz * dz);
-        boolean moving = deltaTime > 0f && horizDist / deltaTime > WALK_THRESHOLD;
+        horizontalSpeed = deltaTime > 0f ? (float) Math.sqrt(dx * dx + dz * dz) / deltaTime : 0f;
         prevPosition.set(position);
 
         updateWaterEffects(deltaTime, dx, dy, dz);
@@ -225,25 +233,37 @@ public class RemotePlayer extends LivingEntity {
             velocityEstimate.set(dx / deltaTime, 0f, dz / deltaTime);
             bodyOrientation.update(deltaTime, velocityEstimate, lookModelYaw);
         }
-
-        // Replicated flags select land sprint/jump; unflagged local figures still walk.
-        short flags = stateFlags;
-        movementState = vehicle != null ? PlayerStateMapping.PlayerMovementState.SITTING
-                : PlayerStateMapping.locomotion(moving,
-                !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE),
-                PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER)
-                        || PlayerStateFlags.has(flags, PlayerStateFlags.SWIMMING),
-                PlayerStateFlags.has(flags, PlayerStateFlags.SPRINTING));
-        boolean contact = gaitClock.update(deltaTime, PlayerStateMapping.gaitDuration(movementState,
-                SbeEntityRegistry.get(com.stonebreak.player.PlayerCharacter.ASSET_ID)));
-        // Same gate as the local player's steps (PlayerBodyAnimation): on land, out of water.
-        footContact = contact && !PlayerStateFlags.has(flags, PlayerStateFlags.AIRBORNE)
-                && !PlayerStateFlags.has(flags, PlayerStateFlags.PARTIALLY_IN_WATER);
-
-        attackAnimation.update(deltaTime, PlayerStateFlags.has(flags, PlayerStateFlags.ATTACKING),
-                SbeEntityRegistry.get(com.stonebreak.player.PlayerCharacter.ASSET_ID));
-
         clipClock.advance(deltaTime, 0.0f);
+    }
+
+    /**
+     * Poses this body for the frame (#457): the replicated flags + displacement speed through the same
+     * {@link com.stonebreak.player.animation.PlayerPoseInputs} as the local player, at the update rate its distance
+     * to the camera allows. Returns whether a foot landed (grounded, out of water).
+     */
+    protected boolean animateBody(float deltaTime) {
+        if (bodyAnimator == null) bodyAnimator = com.stonebreak.player.animation.PlayerBodyAnimator.player();
+        poseInputs.set(stateFlags, horizontalSpeed, getVehicle() != null, getHeadYaw(), getHeadPitch());
+        footContact = false;
+        bodyAnimator.update(deltaTime, poseInputs, bodyUpdateInterval(), bodyEvents);
+        return footContact;
+    }
+
+    /** Every frame near the camera, less often farther out (Unreal's update rate optimization). */
+    private int bodyUpdateInterval() {
+        com.stonebreak.player.Player viewer = com.stonebreak.core.Game.getPlayer();
+        if (viewer == null || viewer.getCamera() == null) return 1;
+        return com.stonebreak.player.animation.PlayerBodyAnimator.intervalFor(
+                viewer.getCamera().getPosition().distanceSquared(position));
+    }
+
+    @Override
+    public void onRemovedFromWorld() {
+        super.onRemovedFromWorld();
+        if (bodyAnimator != null) {
+            bodyAnimator.close();
+            bodyAnimator = null;
+        }
     }
 
     /**
@@ -287,16 +307,15 @@ public class RemotePlayer extends LivingEntity {
     }
 
     /**
-     * Client shadow path (network shadows never run {@link #update}): derive
-     * walk/idle from the freshly interpolated position and advance the
-     * animation clock so the remote player's clips actually play, stepping
-     * audibly on each foot contact.
+     * Client shadow path (network shadows never run {@link #update}): derive speed and facing from
+     * the freshly interpolated position and pose the body through its graph, stepping audibly on
+     * each foot contact.
      */
     @Override
     public void updateClientVisuals(float deltaTime) {
         updateMovementAnimation(deltaTime);
-        // Footsteps (issue #344), on the gait clock's foot contacts as the local player's are.
-        if (footContact) {
+        // Footsteps (issue #344) on the body's foot contacts, as the local player's are.
+        if (animateBody(deltaTime)) {
             com.stonebreak.audio.PlayerSounds.playStepAt(world, position);
         }
     }

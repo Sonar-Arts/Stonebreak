@@ -120,10 +120,9 @@ public class EntityRenderer {
 
         if (entityType == EntityType.REMOTE_PLAYER
                 && entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
-            // Untextured fallback hue is stable per remote player (same scheme as the cylinder).
-            // Body/head come from the shared PlayerBodyOrientation (model space) — the raw
-            // replicated rotation.y is a camera yaw and faces the figure the wrong way.
-            playerFigureRenderer.renderPlayerModel(rp, rp.getBodyYaw(), rp.getHeadYaw(), rp.getHeadPitch(),
+            // Untextured fallback hue is stable per remote player (same scheme as the cylinder). The pose is the
+            // body's own graph instance (#457); facing = PlayerBodyOrientation's model-space body yaw.
+            playerFigureRenderer.renderPlayerModel(rp,
                     new Vector4f(RemotePlayerRenderer.colorFor(rp.getPlayerId()), 1f),
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
@@ -135,8 +134,7 @@ public class EntityRenderer {
         // untextured decoy matches the caster instead of an obvious "illusion" hue.
         if (entityType == EntityType.ILLUSION_DECOY
                 && entity instanceof com.stonebreak.mobs.entities.IllusionDecoy decoy) {
-            playerFigureRenderer.renderPlayerModel(decoy, decoy.getBodyYaw(), decoy.getHeadYaw(), decoy.getHeadPitch(),
-                    playerFigureRenderer.ensureLocalPlayerColor(),
+            playerFigureRenderer.renderPlayerModel(decoy, playerFigureRenderer.ensureLocalPlayerColor(),
                     viewMatrix, projectionMatrix, world, cameraPos);
             return;
         }
@@ -262,57 +260,29 @@ public class EntityRenderer {
     }
 
     /**
-     * Renders a preview pose of the player SBE model into whatever
-     * viewport/scissor the caller has set up, using a caller-supplied camera.
-     *
-     * <p>Counterpart to {@link #renderEntityPreview} for the player, which is not
-     * an {@link Entity} and whose asset may be untextured: textured assets render
-     * normally and untextured assets fall back to the colored path (otherwise
-     * every face is skipped and nothing draws). Intended for UI previews (e.g.
-     * character creation), so the head faces forward, underwater fog is disabled and
-     * the fixed UI preview rig replaces the world's lighting.
-     *
-     * @param stateName     SBE animation-state name (null → rest pose)
-     * @param animationTime elapsed clip time in seconds
-     * @param position      model-space position to place the origin at
-     * @param yawDegrees    Y-axis rotation in degrees
-     * @param scale         world scale
-     * @param viewMatrix    preview camera view matrix
-     * @param projectionMatrix preview camera projection matrix
+     * Draws the player model as a UI preview (character creation, inventory) into whatever viewport/scissor the
+     * caller has set up, with a caller-supplied camera: a standing body animated by the player graph (#457), head
+     * forward, no fog, under the fixed UI preview lighting rig. {@code time} is the preview clock (seconds) that
+     * advances it. {@code attachmentKey} adds socket-mounted accessories (the character creation Looks tab passes
+     * {@link com.stonebreak.mobs.sbe.EntityAttachments#LOCAL_PLAYER}); null skips them.
      */
-    public void renderPlayerPreview(String stateName, float animationTime,
-                                    Vector3f position, float yawDegrees, Vector3f scale,
-                                    Matrix4f viewMatrix, Matrix4f projectionMatrix) {
-        renderPlayerPreview(stateName, animationTime, position, yawDegrees, scale,
-                viewMatrix, projectionMatrix, null);
-    }
-
-    /**
-     * Variant with an attachment key so previews can include socket-mounted
-     * accessories — the character creation Looks tab passes
-     * {@link com.stonebreak.mobs.sbe.EntityAttachments#LOCAL_PLAYER} so the
-     * equipped hat shows on the preview model. Null skips attachments.
-     */
-    public void renderPlayerPreview(String stateName, float animationTime,
-                                    Vector3f position, float yawDegrees, Vector3f scale,
-                                    Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                                    Object attachmentKey) {
+    public void renderPlayerPreview(float time, Vector3f position, float yawDegrees, Vector3f scale,
+                                    Matrix4f viewMatrix, Matrix4f projectionMatrix, Object attachmentKey) {
         if (!initialized) return;
-        withUiPreviewLighting(() -> playerFigureRenderer.renderPlayerPreview(stateName, animationTime,
-                position, yawDegrees, scale, viewMatrix, projectionMatrix, attachmentKey));
+        withUiPreviewLighting(() -> playerFigureRenderer.renderPlayerPreview(time, position, yawDegrees, scale,
+                viewMatrix, projectionMatrix, attachmentKey));
     }
 
     /**
-     * {@link #renderPlayerPreview} for a figure staged <em>inside</em> the world
-     * pass (the Focus battle's monk): same caller-chosen pose, but lit by the
-     * world — time of day, torches, sun shadows — instead of the UI preview rig.
+     * The Focus battle's monk, staged <em>inside</em> the world pass and lit by it: a named clip at a caller time
+     * (its combat clips are not on the player graph; the battle stage goes with the player rebuild).
      */
     public void renderStagedPlayer(String stateName, float animationTime,
                                    Vector3f position, float yawDegrees, Vector3f scale,
                                    Matrix4f viewMatrix, Matrix4f projectionMatrix,
                                    Object attachmentKey) {
         if (!initialized) return;
-        playerFigureRenderer.renderPlayerPreview(stateName, animationTime, position, yawDegrees, scale,
+        playerFigureRenderer.renderStagedPose(stateName, animationTime, position, yawDegrees, scale,
                 viewMatrix, projectionMatrix, attachmentKey);
     }
 
@@ -382,7 +352,7 @@ public class EntityRenderer {
      * <p>Unlike a bounding box, this re-draws the model's own mesh through the
      * same animated transform pipeline used by {@link #renderEntity}, so the
      * overlay always tracks the rendered entity exactly. Supported for SBE-driven
-     * mobs (cows, chickens); other entity types are ignored.
+     * mobs and player-shaped bodies (remote players, decoys); other entity types are ignored.
      *
      * @param color RGBA line colour for the wireframe
      */
@@ -395,6 +365,16 @@ public class EntityRenderer {
         if (SbeMobRenderer.handles(entity)) {
             mobRenderer.renderWireframe((com.stonebreak.mobs.entities.LivingEntity) entity,
                     viewMatrix, projectionMatrix, color);
+            return;
+        }
+        // Player-shaped bodies: the very palette the figure and its shadow draw (#457).
+        if (entity instanceof com.stonebreak.mobs.entities.RemotePlayer rp) {
+            PosedPlayerBody body = PosedPlayerBody.of(rp);
+            if (body != null) {
+                sbeEntityRenderer.renderWireframePosed(body.asset(),
+                        com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT, body.palette(), body.base(),
+                        viewMatrix, projectionMatrix, color);
+            }
         }
     }
 
@@ -409,6 +389,7 @@ public class EntityRenderer {
         glowCubeRenderer.cleanup();
         fireBoltRenderer.cleanup();
 
+        playerFigureRenderer.cleanup();
         sbeEntityRenderer.cleanup();
         remotePlayerRenderer.cleanup();
         initialized = false;

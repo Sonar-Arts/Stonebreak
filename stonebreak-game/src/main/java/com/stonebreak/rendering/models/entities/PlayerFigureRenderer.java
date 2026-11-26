@@ -1,26 +1,40 @@
 package com.stonebreak.rendering.models.entities;
 
-import com.stonebreak.mobs.entities.EntityType;
+import com.openmason.engine.entity.model.EntityAsset;
+import com.openmason.engine.rig.JointPalette;
+import com.stonebreak.mobs.sbe.AnimState;
+import com.stonebreak.mobs.sbe.EntityAttachments;
+import com.stonebreak.player.animation.PlayerBodyAnimator;
+import com.stonebreak.player.animation.PlayerPoseInputs;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 /**
- * Every player-shaped figure through the shared {@code SB_Player.sbe} model:
- * the local player in third person, remote players, illusion decoys and the UI
- * preview poses. Builds the {@link PlayerFigureRenderState} (base locomotion clip
- * + attack overlay envelope), picks the textured or flat-coloured SBE path, and
- * draws socket attachments afterwards. Falls back to the cylinder when the
- * asset is missing so a remote figure never goes invisible.
+ * Every player-shaped figure through the shared {@code SB_Player.sbe} model: the local player in third person,
+ * remote players, illusion decoys and the UI preview. Each body is posed by its own animation graph instance
+ * ({@link PlayerBodyAnimator}, #457) once per update; this class only draws that palette under the body's base
+ * matrix - textured, or flat-coloured for an untextured asset - and its socket attachments. The shadow passes draw
+ * the very same palette ({@link EntityShadowCasterRenderer}). Remote figures fall back to the cylinder until their
+ * body has been posed once.
  */
 final class PlayerFigureRenderer {
+    /** A preview frame never advances the preview body by more than this (a hidden preview resumes calmly). */
+    private static final float MAX_PREVIEW_STEP = 0.1f;
+
     private final SbeEntityRenderer sbeEntityRenderer;
     private final RemotePlayerRenderer remotePlayerRenderer;
     private final EntityAttachmentRenderer attachmentRenderer;
 
-    // Stable-per-session random colour for the local player's untextured body model
-    // (see renderLocalPlayer). Lazily initialised on first third-person render.
+    // Stable-per-session random colour for the local player's untextured body model.
     private Vector4f localPlayerColor;
+
+    /** The UI preview's own body (standing; lazily created, lives with the renderer). */
+    private PlayerBodyAnimator previewBody;
+    private final PlayerPoseInputs previewInputs = new PlayerPoseInputs().standing();
+    private float previewTime = Float.NaN;
 
     PlayerFigureRenderer(SbeEntityRenderer sbeEntityRenderer,
                          RemotePlayerRenderer remotePlayerRenderer,
@@ -30,176 +44,92 @@ final class PlayerFigureRenderer {
         this.attachmentRenderer = attachmentRenderer;
     }
 
-    /**
-     * Renders the local player's full body model in third-person view.
-     *
-     * <p>The local {@link com.stonebreak.player.Player} is not an
-     * {@link com.stonebreak.mobs.entities.Entity} so it cannot go through
-     * {@link EntityRenderer#renderEntity}; this dedicated method drives the SBE
-     * pipeline directly with the player's state and animation clock.
-     */
+    /** The local player's body in third person (and the main menu's preview of the last world). */
     void renderLocalPlayer(com.stonebreak.player.Player player,
                            Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                           com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
-        com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
-        if (asset == null) return;
-
-        // The BASE clip is pure locomotion (jump one-shots use event-relative
-        // time; walk/sprint use the foot-contact clock). Attacking plays as an
-        // OVERLAY on top: it owns only the parts its clip masks (authored in
-        // the .omanim layer metadata), so the legs keep walking mid-swing. The
-        // overlay envelope handles fade-in and pop-free early-exit fade-out.
-        // Body facing and head angles are owned by PlayerBodyOrientation.
-        String overlayState = null;
-        float overlayTime = 0f;
-        float overlayWeight = 0f;
-        com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay = player.getAttackOverlay();
-        if (attackOverlay.isVisible()) {
-            overlayState = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(
-                    com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING);
-            com.openmason.engine.format.oma.ParsedAnimClip attackClip = asset.clipFor(overlayState);
-            if (attackClip != null) {
-                overlayTime = attackOverlay.time();
-                overlayWeight = attackOverlay.weight(
-                        attackClip.layer().fadeInSeconds(), attackClip.layer().fadeOutSeconds());
-            }
-        }
-
-        PlayerFigureRenderState figure = new PlayerFigureRenderState(
-                player.getPosition(),
-                player.getBodyYaw(),
-                new Vector3f(1f, 1f, 1f),
-                player.getThirdPersonHeadYaw(),
-                player.getThirdPersonHeadPitch(),
-                com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(player.getBaseMovementState()),
-                player.getBodyEventTime(),
-                overlayState,
-                overlayTime,
-                overlayWeight,
-                ensureLocalPlayerColor());
-
-        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos,
-                com.stonebreak.mobs.sbe.EntityAttachments.LOCAL_PLAYER);
+                           com.stonebreak.world.World world, Vector3dc cameraPos) {
+        PosedPlayerBody body = PosedPlayerBody.of(player);
+        if (body == null) return;
+        draw(body, ensureLocalPlayerColor(), viewMatrix, projectionMatrix, world, cameraPos,
+                EntityAttachments.LOCAL_PLAYER);
     }
 
     /**
-     * Renders a {@link com.stonebreak.mobs.entities.RemotePlayer} (or its
-     * {@code IllusionDecoy} subclass) through the shared player SBE model. The
-     * model is always resolved from {@link EntityType#REMOTE_PLAYER}'s asset id,
-     * so any texture/geometry change to {@code SB_Player.sbe} applies to every
-     * player-shaped figure — remote players and decoys alike — without copying
-     * anything per entity. Falls back to the cylinder if the asset is missing so
-     * the figure never goes invisible.
+     * A {@link com.stonebreak.mobs.entities.RemotePlayer} or its {@code IllusionDecoy} subclass, posed by its own
+     * body ({@link com.stonebreak.mobs.entities.RemotePlayer#bodyAnimator()}); the cylinder until that body exists.
      */
-    void renderPlayerModel(com.stonebreak.mobs.entities.RemotePlayer rp,
-                           float yaw, float headYaw, float headPitch,
-                           Vector4f untexturedTint,
+    void renderPlayerModel(com.stonebreak.mobs.entities.RemotePlayer rp, Vector4f untexturedTint,
                            Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                           com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
-        com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
-        if (asset == null) {
-            // Asset not loaded — fall back to cylinder so the figure never goes invisible.
+                           com.stonebreak.world.World world, Vector3dc cameraPos) {
+        PosedPlayerBody body = PosedPlayerBody.of(rp);
+        if (body == null) {
             remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
             return;
         }
-        // Attack overlay from the replicated ATTACKING flag — same envelope + clip-fade
-        // computation as the local player's third-person path (renderLocalPlayer), so
-        // remote swings render identically to your own.
-        String overlayState = null;
-        float overlayTime = 0f;
-        float overlayWeight = 0f;
-        com.stonebreak.mobs.sbe.OverlayAnimState attackOverlay = rp.getAttackOverlay();
-        if (attackOverlay.isVisible()) {
-            overlayState = com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(
-                    com.stonebreak.mobs.sbe.PlayerStateMapping.PlayerMovementState.ATTACKING);
-            com.openmason.engine.format.oma.ParsedAnimClip attackClip = asset.clipFor(overlayState);
-            if (attackClip != null) {
-                overlayTime = attackOverlay.time();
-                overlayWeight = attackOverlay.weight(
-                        attackClip.layer().fadeInSeconds(), attackClip.layer().fadeOutSeconds());
-            } else {
-                overlayState = null;
-            }
-        }
-
-        PlayerFigureRenderState figure = new PlayerFigureRenderState(
-                rp.getPosition(),
-                yaw,
-                rp.getScale(),
-                headYaw,
-                headPitch,
-                com.stonebreak.mobs.sbe.PlayerStateMapping.sbeState(rp.getMovementState()),
-                rp.getBodyAnimationTime(),
-                overlayState,
-                overlayTime,
-                overlayWeight,
-                untexturedTint);
-
-        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, world, cameraPos, rp);
+        draw(body, untexturedTint, viewMatrix, projectionMatrix, world, cameraPos, rp);
     }
 
     /**
-     * Preview pose of the player model for UI (character creation): head faces
-     * forward, no fog; {@code attachmentKey} null skips socket attachments.
+     * The UI preview (character creation, inventory): a standing body with the head forward, advanced by the preview
+     * clock {@code time} (seconds); {@code attachmentKey} null skips socket attachments.
      */
-    void renderPlayerPreview(String stateName, float animationTime,
-                             Vector3f position, float yawDegrees, Vector3f scale,
-                             Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                             Object attachmentKey) {
-        com.openmason.engine.entity.model.EntityAsset asset = SbeRenderSupport.playerAsset();
+    void renderPlayerPreview(float time, Vector3f position, float yawDegrees, Vector3f scale,
+                             Matrix4f viewMatrix, Matrix4f projectionMatrix, Object attachmentKey) {
+        if (previewBody == null) previewBody = PlayerBodyAnimator.player();
+        float dt = Float.isNaN(previewTime) ? 0f : Math.clamp(time - previewTime, 0f, MAX_PREVIEW_STEP);
+        previewTime = time;
+        if (dt > 0f || !previewBody.posed()) previewBody.update(dt, previewInputs, PlayerBodyAnimator.Events.NONE);
+        draw(new PosedPlayerBody(previewBody.set().asset(), previewBody.palette(),
+                        SbePoseSolver.baseMatrix(position, yawDegrees, scale)), ensureLocalPlayerColor(),
+                viewMatrix, projectionMatrix, null, null, attachmentKey);
+    }
+
+    /**
+     * The Focus battle's monk: a named clip at a caller time (its combat clips are not on the graph; the battle stage
+     * is to be retired with the player rebuild, #457).
+     */
+    void renderStagedPose(String stateName, float animationTime, Vector3f position, float yawDegrees, Vector3f scale,
+                          Matrix4f viewMatrix, Matrix4f projectionMatrix, Object attachmentKey) {
+        EntityAsset asset = SbeRenderSupport.playerAsset();
         if (asset == null) return;
-        PlayerFigureRenderState figure = new PlayerFigureRenderState(
-                new org.joml.Vector3d(position), yawDegrees, scale, 0f, 0f, stateName, animationTime,
-                ensureLocalPlayerColor());
-        renderPlayerFigure(asset, figure, viewMatrix, projectionMatrix, null, null,
-                attachmentKey);
+        AnimState anim = AnimState.single(stateName, animationTime);
+        Vector3d at = new Vector3d(position);
+        if (SbeRenderSupport.isTextured(asset)) {
+            sbeEntityRenderer.render(asset, EntityAsset.DEFAULT_VARIANT, anim, at, yawDegrees, scale,
+                    viewMatrix, projectionMatrix, null, null, 0f, 0f);
+        } else {
+            sbeEntityRenderer.renderColored(asset, EntityAsset.DEFAULT_VARIANT, anim, at, yawDegrees, scale,
+                    viewMatrix, projectionMatrix, ensureLocalPlayerColor(), 0f, 0f);
+        }
+        if (attachmentKey != null) {
+            attachmentRenderer.render(attachmentKey, asset, EntityAsset.DEFAULT_VARIANT, anim, at, yawDegrees, scale,
+                    0f, 0f, viewMatrix, projectionMatrix, null, null);
+        }
     }
 
-    /**
-     * The single path that maps a {@link PlayerFigureRenderState} onto the SBE
-     * pipeline — shared by the local player, remote players, and decoys. Textured
-     * assets render normally; untextured assets fall back to {@code figure.tint()}
-     * via the colored path (the textured path would skip every face and render
-     * nothing). Models attached to {@code attachmentKey}'s sockets
-     * ({@link com.stonebreak.mobs.sbe.EntityAttachments}) render after the
-     * figure; null skips attachments (UI previews).
-     */
-    private void renderPlayerFigure(com.openmason.engine.entity.model.EntityAsset asset,
-                                    PlayerFigureRenderState figure,
-                                    Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                                    com.stonebreak.world.World world, org.joml.Vector3dc cameraPos,
-                                    Object attachmentKey) {
-        com.stonebreak.mobs.sbe.AnimState anim = figure.hasOverlay()
-                ? new com.stonebreak.mobs.sbe.AnimState(figure.stateName(), figure.animTime(),
-                        java.util.List.of(new com.stonebreak.mobs.sbe.AnimState.Overlay(
-                                figure.overlayState(), figure.overlayTime(), figure.overlayWeight())))
-                : com.stonebreak.mobs.sbe.AnimState.single(figure.stateName(), figure.animTime());
-
+    /** The one way a posed player body is drawn: textured or tinted, then its sockets. */
+    private void draw(PosedPlayerBody body, Vector4f tint,
+                      Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                      com.stonebreak.world.World world, Vector3dc cameraPos, Object attachmentKey) {
+        EntityAsset asset = body.asset();
+        JointPalette posed = body.palette();
+        Matrix4f base = body.base();
         if (SbeRenderSupport.isTextured(asset)) {
-            sbeEntityRenderer.render(
-                    asset, com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT,
-                    anim, figure.position(), figure.yaw(), figure.scale(),
-                    viewMatrix, projectionMatrix, world, cameraPos, figure.headYaw(), figure.headPitch());
+            sbeEntityRenderer.renderPosed(asset, EntityAsset.DEFAULT_VARIANT, posed, base,
+                    viewMatrix, projectionMatrix, world, cameraPos);
         } else {
-            sbeEntityRenderer.renderColored(
-                    asset, com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT,
-                    anim, figure.position(), figure.yaw(), figure.scale(),
-                    viewMatrix, projectionMatrix, figure.tint(), figure.headYaw(), figure.headPitch());
+            sbeEntityRenderer.renderColoredPosed(asset, EntityAsset.DEFAULT_VARIANT, posed, base,
+                    viewMatrix, projectionMatrix, tint);
         }
-
         if (attachmentKey != null) {
-            attachmentRenderer.render(attachmentKey, asset,
-                    com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT, anim,
-                    figure.position(), figure.yaw(), figure.scale(),
-                    figure.headYaw(), figure.headPitch(),
+            attachmentRenderer.renderPosed(attachmentKey, asset, EntityAsset.DEFAULT_VARIANT, posed, base,
                     viewMatrix, projectionMatrix, world, cameraPos);
         }
     }
 
     /**
-     * Stable-per-session colour for the local player's untextured body model.
-     * Decoys reuse this so an untextured decoy matches its caster. Lazily
-     * initialised on first use.
+     * Stable-per-session colour for the local player's untextured body model. Decoys reuse this so an untextured decoy
+     * matches its caster. Lazily initialised on first use.
      */
     Vector4f ensureLocalPlayerColor() {
         if (localPlayerColor == null) {
@@ -207,5 +137,12 @@ final class PlayerFigureRenderer {
                     RemotePlayerRenderer.colorFor(new java.util.Random().nextInt()), 1f);
         }
         return localPlayerColor;
+    }
+
+    void cleanup() {
+        if (previewBody != null) {
+            previewBody.close();
+            previewBody = null;
+        }
     }
 }

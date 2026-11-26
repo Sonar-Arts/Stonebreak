@@ -1,49 +1,39 @@
 package com.stonebreak.player;
 
-import com.stonebreak.mobs.sbe.OverlayAnimState;
-import com.stonebreak.mobs.sbe.PlayerAttackAnimation;
-import com.stonebreak.mobs.sbe.PlayerGaitClock;
-import com.stonebreak.mobs.sbe.PlayerStateMapping;
-import com.openmason.engine.entity.model.EntityAsset;
+import com.stonebreak.player.animation.PlayerBodyAnimator;
+import com.stonebreak.player.animation.PlayerPoseInputs;
 import org.joml.Vector3f;
 
 /**
- * Animation clocks and orientation for the third-person body model: the continuous
- * idle clock, the foot-contact gait clock, the one-shot jump clock, the attack overlay envelope and the
- * smoothed body/head facing. Advanced once per tick by {@link PlayerUpdatePipeline}.
+ * The local player's body: its facing ({@link PlayerBodyOrientation}) and its pose, the player animation graph
+ * driven by the same inputs a remote copy of this player gets ({@link PlayerPoseInputs} from the replicated state
+ * flags, #457). Advanced once per tick by {@link PlayerUpdatePipeline}; the third-person figure, its shadow and the
+ * main menu preview draw {@link #animator()}'s palette.
  */
 final class PlayerBodyAnimation {
 
-    private float bodyAnimationTime = 0f;
-    private float jumpEventTime = 0f;    // seconds since jump started
-    private final PlayerAttackAnimation attackAnimation = new PlayerAttackAnimation();
-    private final PlayerGaitClock gaitClock = new PlayerGaitClock();
-    private boolean footstepDue;
-    // Third-person body facing + head look angles. Decoupled from the first-person
-    // camera: the camera only supplies a look yaw/pitch; this component decides how
-    // the body turns to follow movement and the look direction.
+    // Third-person body facing + head look angles, decoupled from the first-person camera: the camera only supplies
+    // a look yaw/pitch; this decides how the body turns to follow movement and the look direction.
     private final PlayerBodyOrientation bodyOrientation = new PlayerBodyOrientation();
+    private final PlayerPoseInputs inputs = new PlayerPoseInputs();
+    private PlayerBodyAnimator animator;
 
-    void update(float dt, boolean attacking, boolean onGround, Vector3f velocity, Vector3f cameraFront,
-                PlayerStateMapping.PlayerMovementState movementState, boolean physicallyInWater,
-                EntityAsset asset) {
-        // Advance body animation clocks (used by third-person renderer).
-        bodyAnimationTime += dt;
-        if (!onGround) jumpEventTime += dt; else jumpEventTime = 0f;
-        boolean contact = gaitClock.update(dt, PlayerStateMapping.gaitDuration(movementState, asset));
-        footstepDue = contact && onGround && !physicallyInWater;
-        // Finish the authored punch even after the short mining/combat pulse ends.
-        attackAnimation.update(dt, attacking, asset);
-
-        // Third-person body faces movement / look direction; the camera only
-        // supplies the look yaw, converted from its front vector into model space.
+    /** Turns the body (movement / look; a seat overrides it). */
+    void orient(float dt, Vector3f velocity, Vector3f cameraFront, boolean seated, float seatYaw) {
         float lookModelYaw = PlayerBodyOrientation.modelYawFromDirection(cameraFront.x, cameraFront.z);
         bodyOrientation.update(dt, velocity, lookModelYaw);
+        if (seated) bodyOrientation.seat(seatYaw);
     }
 
-    float getBodyAnimationTime() { return gaitClock.isActive() ? gaitClock.timeSeconds() : bodyAnimationTime; }
-    boolean isFootstepDue() { return footstepDue; }
-    float getJumpEventTime() { return jumpEventTime; }
-    OverlayAnimState getAttackOverlay() { return attackAnimation.overlay(); }
+    /** Poses the body for this tick from the player's replicated-style state. */
+    void animate(float dt, short stateFlags, float horizontalSpeed, boolean seated, float headYaw, float headPitch,
+                 PlayerBodyAnimator.Events events) {
+        if (animator == null) animator = PlayerBodyAnimator.player();
+        animator.update(dt, inputs.set(stateFlags, horizontalSpeed, seated, headYaw, headPitch), events);
+    }
+
     PlayerBodyOrientation getBodyOrientation() { return bodyOrientation; }
+
+    /** The body's animator; null before the first tick. */
+    PlayerBodyAnimator animator() { return animator; }
 }

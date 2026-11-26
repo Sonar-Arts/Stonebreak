@@ -478,23 +478,7 @@ public final class ClientWorldView {
         org.joml.Vector3d pos = p.getPosition();
         float yaw = p.getCamera() != null ? p.getCamera().getYaw() : 0f;
         float pitch = p.getCamera() != null ? p.getCamera().getPitch() : 0f;
-        short flags = 0;
-        if (p.isSprinting()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.SPRINTING;
-        if (p.isInWater())   flags |= com.stonebreak.network.packet.player.PlayerStateFlags.SWIMMING;
-        if (p.isPhysicallyInWater()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.PARTIALLY_IN_WATER;
-        if (!p.isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE;
-        if (p.isOnGround())  flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND;
-        if (p.isAttacking()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;
-        if (p.getStealth().isStealthed()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.STEALTHED;
-        if (p.getDodge().isMakingNoise()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DODGE_NOISE;
-        if (p.getBreakingBlock() != null) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.MINING;
-        // #343: what the server needs to resolve the player's health — flight voids falls and
-        // cactus contact, a dodge's i-frames negate blows, Rage T3 heals by lifesteal.
-        if (p.isFlying()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.FLYING;
-        if (p.getDodge().isInvincible()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DODGING;
-        if (p.getBerserkerAbilities().getRage().getTier().atLeast(com.stonebreak.player.combat.RageTier.T3)) {
-            flags |= com.stonebreak.network.packet.player.PlayerStateFlags.LIFESTEAL;
-        }
+        short flags = p.stateFlags();  // also what this player's own body animates from (#457)
         connection.send(new PlayerStateC2S(pos.x, pos.y, pos.z, yaw, pitch, flags), true);
 
         if (p.getInventory() != null) {

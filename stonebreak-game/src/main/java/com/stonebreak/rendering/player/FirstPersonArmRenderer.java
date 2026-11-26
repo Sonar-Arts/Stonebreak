@@ -1,12 +1,11 @@
 package com.stonebreak.rendering.player;
 
-import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.core.Game;
 import com.openmason.engine.entity.model.EntityAsset;
-import com.stonebreak.mobs.sbe.SbeEntityRegistry;
-import com.stonebreak.mobs.sbe.PlayerStateMapping;
-import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.player.Player;
+import com.stonebreak.player.animation.PlayerAnimationSet;
+import com.stonebreak.player.animation.PlayerBodyAnimator;
+import com.stonebreak.player.animation.PlayerPoseInputs;
 import com.stonebreak.rendering.models.entities.SbeEntityRenderer;
 import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryStack;
@@ -22,13 +21,17 @@ final class FirstPersonArmRenderer {
     private final Matrix4f worldTransform = new Matrix4f();
     private final Matrix4f handProjection = new Matrix4f();
     private EntityAsset asset;
+    /** The arm's own graph (idle + the punch layer), driven by the player's {@code attacking} like the body's. */
+    private PlayerBodyAnimator arm;
+    private final PlayerPoseInputs inputs = new PlayerPoseInputs();
     private boolean unavailable;
 
     boolean render(Player player, Matrix4f projection) {
         if (unavailable) return false;
         if (asset == null) {
             try {
-                asset = GameSbeAssets.load(FirstPersonArmPose.RESOURCE);
+                arm = new PlayerBodyAnimator(PlayerAnimationSet.firstPersonArm());
+                asset = arm.set().asset();
                 renderer.initialize();
             } catch (RuntimeException e) {
                 unavailable = true;
@@ -39,12 +42,13 @@ final class FirstPersonArmRenderer {
         var view = player.getViewMatrix();
         var velocity = player.getVelocity();
         boolean moving = player.isOnGround() && velocity.x * velocity.x + velocity.z * velocity.z > 0.25f;
-        float gaitDuration = PlayerStateMapping.gaitDuration(player.getBaseMovementState(),
-                SbeEntityRegistry.get(com.stonebreak.player.PlayerCharacter.ASSET_ID));
-        float gaitPhase = gaitDuration > 0f ? player.getBodyAnimationTime() / gaitDuration : 0f;
+        // The bob follows the body's gait phase: the pose the body shows (#457).
+        PlayerBodyAnimator body = player.getBodyAnimator();
+        float gaitPhase = body != null ? body.gaitPhase() : 0f;
         FirstPersonArmPose.worldTransform(view, gaitPhase, moving, worldTransform);
         FirstPersonArmPose.projection(projection, handProjection);
-        var anim = FirstPersonArmPose.animation(asset, Game.getInstance().getTotalTimeElapsed(), player.getAttackOverlay());
+        inputs.standing().attacking = player.isAttacking();
+        arm.update(Game.getDeltaTime(), inputs, PlayerBodyAnimator.Events.NONE);
 
         // Keep the hand in front of nearby terrain while retaining its own depth ordering.
         // World-space placement lets the shared shader sample torch/day/night lighting correctly.
@@ -57,8 +61,8 @@ final class FirstPersonArmRenderer {
             try {
                 glDepthRange(0.0, 0.05);
                 glDepthMask(true);
-                renderer.render(asset, "Default", anim, worldTransform, view, handProjection,
-                        Game.getWorld(), player.getCamera().getPosition(), 0f, 0f);
+                renderer.renderPosed(asset, EntityAsset.DEFAULT_VARIANT, arm.palette(), worldTransform, view,
+                        handProjection, Game.getWorld(), player.getCamera().getPosition());
             } finally {
                 glDepthRange(depthRange.get(0), depthRange.get(1));
                 glDepthFunc(depthFunc);
@@ -69,5 +73,11 @@ final class FirstPersonArmRenderer {
         return true;
     }
 
-    void cleanup() { renderer.cleanup(); }
+    void cleanup() {
+        renderer.cleanup();
+        if (arm != null) {
+            arm.close();
+            arm = null;
+        }
+    }
 }

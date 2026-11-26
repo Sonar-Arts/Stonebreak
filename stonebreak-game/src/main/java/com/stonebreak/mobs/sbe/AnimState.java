@@ -10,7 +10,7 @@ import java.util.List;
  * <p>Overlay masks, fades, and priorities are authored in the {@code .omanim}
  * clip itself ({@code AnimLayerMeta}); the renderer resolves state names to
  * clips and applies per-part precedence. The {@code weight} here is the
- * caller's envelope (e.g. an early-exit fade from {@link OverlayAnimState}) —
+ * caller's envelope (e.g. an early-exit fade) —
  * it multiplies with the clip's own fade-in/out.
  *
  * @param baseState base clip state name (null → rest pose)

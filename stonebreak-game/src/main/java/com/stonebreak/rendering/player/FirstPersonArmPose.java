@@ -1,16 +1,13 @@
 package com.stonebreak.rendering.player;
 
 import com.stonebreak.items.ItemStack;
-import com.stonebreak.mobs.sbe.AnimState;
-import com.stonebreak.mobs.sbe.OverlayAnimState;
-import com.openmason.engine.entity.model.EntityAsset;
 import org.joml.Matrix4f;
 
-import java.util.List;
-
-/** Camera placement and animation selection for the authored empty-hand arm. No GL state. */
+/**
+ * Camera placement for the authored empty-hand arm (its pose is its own animation graph, driven like the body's,
+ * #457). No GL state.
+ */
 final class FirstPersonArmPose {
-    static final String RESOURCE = "/sbe/Player/SB_FPArm.sbe";
 
     private FirstPersonArmPose() {}
 
@@ -26,12 +23,5 @@ final class FirstPersonArmPose {
     static Matrix4f projection(Matrix4f worldProjection, Matrix4f dest) {
         float aspect = worldProjection.m11() / worldProjection.m00();
         return dest.setPerspective((float) Math.toRadians(70), aspect, 0.02f, 10f);
-    }
-
-    static AnimState animation(EntityAsset arm, float idleTime, OverlayAnimState attack) {
-        var clip = arm.clipFor("attacking");
-        if (clip == null || !attack.isVisible()) return AnimState.single("idle", idleTime);
-        return new AnimState("idle", idleTime, List.of(new AnimState.Overlay("attacking", attack.time(),
-                attack.weight(clip.layer().fadeInSeconds(), clip.layer().fadeOutSeconds()))));
     }
 }

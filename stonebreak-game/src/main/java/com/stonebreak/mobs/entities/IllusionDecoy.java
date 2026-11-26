@@ -105,7 +105,7 @@ public class IllusionDecoy extends RemotePlayer {
         // Both are MODEL-space yaw (raw camera degrees are a different angle space).
         rotation.y = (fakeCasting ? owner.lookYaw() : owner.bodyYaw()) + angle;
 
-        // Drive the SBE model: derive walk/idle from the move just applied and advance the clip.
+        // Speed and facing from the move just applied (the pose: update / updateClientVisuals).
         updateMovementAnimation(deltaTime);
     }
 
@@ -144,6 +144,11 @@ public class IllusionDecoy extends RemotePlayer {
         age += deltaTime;
         if (owner != null) {
             mirrorOwner(deltaTime);
+            // A local-only decoy (no session) lives in the rendered world and poses itself there; the server's
+            // decoys never pose (their client shadows do, in updateClientVisuals).
+            if (world != null && world == com.stonebreak.core.Game.getWorld()) {
+                animateBody(deltaTime);
+            }
         }
     }
 }

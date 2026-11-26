@@ -26,6 +26,20 @@ final class PlayerUpdatePipeline {
     private final PlayerWaterEffects waterEffects;
     private final PlayerBodyAnimation bodyAnimation;
     private float lastHealthForStealth; // tracks health between frames to detect any damage taken
+    /** The body's animation events: step sounds and the player asset's notify-named FX/sounds. */
+    private final com.stonebreak.player.animation.PlayerBodyAnimator.Events bodyEvents =
+            new com.stonebreak.player.animation.PlayerBodyAnimator.Events() {
+                @Override
+                public void footstep() {
+                    com.stonebreak.audio.PlayerSounds sounds = Game.getPlayerSounds();
+                    if (sounds != null) sounds.playFootstep(state.getPosition());
+                }
+
+                @Override
+                public void event(String name) {
+                    com.stonebreak.player.animation.PlayerAnimEvents.assetEvent(name, state.getPosition());
+                }
+            };
 
     PlayerUpdatePipeline(Player player, PlayerControllers controllers, PhysicsState state, Camera camera,
                          PlayerStats stats, PlayerWaterEffects waterEffects, PlayerBodyAnimation bodyAnimation) {
@@ -97,18 +111,12 @@ final class PlayerUpdatePipeline {
             stats.addTimeFishing(dt);
         }
 
-        // Advance the pose before audio: both consume this tick's exact gait phase.
-        bodyAnimation.update(dt, c.attack.isAttacking(), state.isOnGround(), state.getVelocity(), camera.getFront(),
-                player.getBaseMovementState(), state.isPhysicallyInWater(),
-                com.stonebreak.mobs.sbe.SbeEntityRegistry.get(
-                        com.stonebreak.player.PlayerCharacter.ASSET_ID));
-        if (seated) {
-            bodyAnimation.getBodyOrientation().seat(player.getRiding().seatYaw());
-        }
-        com.stonebreak.audio.PlayerSounds playerSounds = Game.getPlayerSounds();
-        if (playerSounds != null && bodyAnimation.isFootstepDue()) {
-            playerSounds.playFootstep(p);
-        }
+        // Turn and pose the body (#457): the player graph, fed the flags this player replicates, so a remote copy
+        // of it poses the same. Footsteps come from the pose (notifies, else the gait phase), before audio.
+        bodyAnimation.orient(dt, state.getVelocity(), camera.getFront(), seated,
+                seated ? player.getRiding().seatYaw() : 0f);
+        bodyAnimation.animate(dt, player.stateFlags(), player.getHorizontalSpeed(), seated,
+                player.getThirdPersonHeadYaw(), player.getThirdPersonHeadPitch(), bodyEvents);
         if (Game.getWorld() != null) {
             // Listener-relative audio (#445): AudioSpace moves the audio origin, hands the mixer small floats.
             com.stonebreak.audio.AudioSpace.setListener(Game.getSoundSystem(), p, camera.getFront(), camera.getUp());

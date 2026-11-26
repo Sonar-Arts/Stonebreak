@@ -423,6 +423,28 @@ public final class SbeEntityRenderer {
                        com.stonebreak.world.World world, org.joml.Vector3dc cameraPos,
                        float headYawDeg, float headPitchDeg,
                        SbePoseSolver.PartOverrides overrides) {
+        drawTextured(asset, variantName, anim, null, baseMatrix, viewMatrix, projectionMatrix, world, cameraPos,
+                headYawDeg, headPitchDeg, overrides);
+    }
+
+    /**
+     * Draws a body already posed in MODEL space (an animation graph's palette, #457:
+     * {@link com.stonebreak.player.animation.PlayerBodyAnimator}); {@code baseMatrix} = its render-space model
+     * transform ({@link SbePoseSolver#baseMatrix}). Every pass of the body draws the same palette.
+     */
+    public void renderPosed(EntityAsset asset, String variantName, JointPalette posed,
+                            Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                            com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
+        if (posed == null) return;
+        drawTextured(asset, variantName, null, posed, baseMatrix, viewMatrix, projectionMatrix, world, cameraPos,
+                0f, 0f, null);
+    }
+
+    private void drawTextured(EntityAsset asset, String variantName, AnimState anim, JointPalette posed,
+                              Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                              com.stonebreak.world.World world, org.joml.Vector3dc cameraPos,
+                              float headYawDeg, float headPitchDeg,
+                              SbePoseSolver.PartOverrides overrides) {
         if (!initialized || asset == null) return;
 
         EntityGeometry geometry = asset.geometryFor(variantName);
@@ -498,7 +520,7 @@ public final class SbeEntityRenderer {
             GL11.glDepthMask(false);
         }
 
-        beginSkin(shader, geometry, asset, anim, baseMatrix, headYawDeg, headPitchDeg, overrides);
+        beginSkin(shader, geometry, asset, anim, posed, baseMatrix, headYawDeg, headPitchDeg, overrides);
         java.util.List<EntityPart> parts = geometry.parts();
         for (int i = 0; i < parts.size(); i++) {
             EntityPart part = parts.get(i);
@@ -611,6 +633,19 @@ public final class SbeEntityRenderer {
     private void renderWireframe(EntityAsset asset, String variantName, String stateName,
                                  float animationTime, Matrix4f base, Matrix4f viewMatrix,
                                  Matrix4f projectionMatrix, Vector4f color) {
+        drawWireframe(asset, variantName, AnimState.single(stateName, animationTime), null, base, viewMatrix,
+                projectionMatrix, color);
+    }
+
+    /** Debug wireframe of a body already posed in MODEL space (see {@link #renderPosed}). */
+    public void renderWireframePosed(EntityAsset asset, String variantName, JointPalette posed, Matrix4f base,
+                                     Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector4f color) {
+        if (posed == null) return;
+        drawWireframe(asset, variantName, null, posed, base, viewMatrix, projectionMatrix, color);
+    }
+
+    private void drawWireframe(EntityAsset asset, String variantName, AnimState anim, JointPalette posed,
+                               Matrix4f base, Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector4f color) {
         if (!initialized || asset == null || wireShader == null) return;
 
         EntityGeometry geometry = asset.geometryFor(variantName);
@@ -641,8 +676,7 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(gpu.vao);
 
         int previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
-        beginSkin(wireShader, geometry, asset, AnimState.single(stateName, animationTime),
-                base, 0f, 0f, null);
+        beginSkin(wireShader, geometry, asset, anim, posed, base, 0f, 0f, null);
         drawUntexturedParts(geometry, gpu);
         endSkin(wireShader);
         GL13.glActiveTexture(previousActiveTexture);
@@ -709,6 +743,24 @@ public final class SbeEntityRenderer {
     public void renderColored(EntityAsset asset, String variantName, AnimState anim,
                               Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                               Vector4f color, float headYawDeg, float headPitchDeg) {
+        drawColored(asset, variantName, anim, null, baseMatrix, viewMatrix, projectionMatrix, color,
+                headYawDeg, headPitchDeg);
+    }
+
+    /**
+     * Flat-coloured draw of a body already posed in MODEL space (see {@link #renderPosed}): untextured figures and
+     * the depth-only shadow-caster passes, which therefore show exactly the drawn pose.
+     */
+    public void renderColoredPosed(EntityAsset asset, String variantName, JointPalette posed,
+                                   Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                   Vector4f color) {
+        if (posed == null) return;
+        drawColored(asset, variantName, null, posed, baseMatrix, viewMatrix, projectionMatrix, color, 0f, 0f);
+    }
+
+    private void drawColored(EntityAsset asset, String variantName, AnimState anim, JointPalette posed,
+                             Matrix4f baseMatrix, Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                             Vector4f color, float headYawDeg, float headPitchDeg) {
         if (!initialized || asset == null || wireShader == null) return;
 
         EntityGeometry geometry = asset.geometryFor(variantName);
@@ -732,7 +784,7 @@ public final class SbeEntityRenderer {
         GL30.glBindVertexArray(gpu.vao);
 
         int previousActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE);
-        beginSkin(wireShader, geometry, asset, anim, baseMatrix, headYawDeg, headPitchDeg, null);
+        beginSkin(wireShader, geometry, asset, anim, posed, baseMatrix, headYawDeg, headPitchDeg, null);
         drawUntexturedParts(geometry, gpu);
         endSkin(wireShader);
         GL13.glActiveTexture(previousActiveTexture);
@@ -753,8 +805,16 @@ public final class SbeEntityRenderer {
      * with an identity {@code model}: every part then draws straight from the shared VAO.
      */
     private void beginSkin(ShaderProgram program, EntityGeometry geometry, EntityAsset asset, AnimState anim,
-                           Matrix4f baseMatrix, float headYawDeg, float headPitchDeg,
+                           JointPalette posed, Matrix4f baseMatrix, float headYawDeg, float headPitchDeg,
                            SbePoseSolver.PartOverrides overrides) {
+        if (posed != null) {
+            // Posed in model space by its animation graph: the base matrix is the draw's model transform.
+            paletteTexture.upload(posed);
+            paletteTexture.bind(JointPaletteTexture.DEFAULT_UNIT);
+            program.setUniform("u_skinned", true);
+            program.setUniform("model", baseMatrix);
+            return;
+        }
         SbePoseSolver.pose(geometry, asset, anim, baseMatrix, headYawDeg, headPitchDeg, overrides, palette);
         paletteTexture.upload(palette);
         paletteTexture.bind(JointPaletteTexture.DEFAULT_UNIT);

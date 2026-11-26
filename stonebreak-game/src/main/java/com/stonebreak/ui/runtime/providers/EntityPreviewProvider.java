@@ -70,7 +70,7 @@ public final class EntityPreviewProvider extends GlPreviewProvider {
         Orbit orbit = orbit(p, player, b, time, (float) width / height);
 
         if (player) {
-            entities.renderPlayerPreview(null, time, new Vector3f(), 0f, new Vector3f(1f, 1f, 1f),
+            entities.renderPlayerPreview(time, new Vector3f(), 0f, new Vector3f(1f, 1f, 1f),
                 orbit.view(), orbit.projection(), EntityAttachments.LOCAL_PLAYER);
         } else {
             entities.renderEntityPreview(type, variant, text(p, "state", "Idle"), time, new Vector3f(), 0f,

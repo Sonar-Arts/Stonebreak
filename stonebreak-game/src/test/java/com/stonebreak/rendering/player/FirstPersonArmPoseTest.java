@@ -42,7 +42,7 @@ class FirstPersonArmPoseTest {
 
     @Test
     void idleAndImpactKeepTheFistVisibleAndOnTheRight() {
-        var asset = GameSbeAssets.load(FirstPersonArmPose.RESOURCE);
+        var asset = GameSbeAssets.load(com.stonebreak.player.animation.PlayerAnimationSet.FP_ARM_ASSET);
         var base = FirstPersonArmPose.worldTransform(new Matrix4f(), 0, false, new Matrix4f());
         var idle = point(asset, AnimState.single("idle", 0), base);
         var impact = point(asset, new AnimState("idle", 0, List.of(new AnimState.Overlay("attacking", .38f, 1))), base);
@@ -65,7 +65,7 @@ class FirstPersonArmPoseTest {
 
     @Test
     void exportedArmHasClosedFingerGeometryAndCompatibleClips() {
-        var asset = GameSbeAssets.load(FirstPersonArmPose.RESOURCE);
+        var asset = GameSbeAssets.load(com.stonebreak.player.animation.PlayerAnimationSet.FP_ARM_ASSET);
         var geometry = asset.geometryFor("Default");
         var names = geometry.parts().stream().map(EntityPart::name).collect(Collectors.toSet());
         assertTrue(names.containsAll(List.of("upper_arm", "forearm", "wrist_cuff", "wrist_guard", "fist")));
@@ -85,7 +85,7 @@ class FirstPersonArmPoseTest {
 
     @Test
     void idleLoopsAndPunchReturnsToItsIdlePoseWithoutScalingTheFist() {
-        var asset = GameSbeAssets.load(FirstPersonArmPose.RESOURCE);
+        var asset = GameSbeAssets.load(com.stonebreak.player.animation.PlayerAnimationSet.FP_ARM_ASSET);
         Map<String, Matrix4f> start = matrices(asset, "idle", 0);
         for (var end : List.of(matrices(asset, "idle", 3.2f), matrices(asset, "attacking", .78f))) {
             start.forEach((name, matrix) -> assertTrue(matrix.equals(end.get(name), 1e-5f), name));
