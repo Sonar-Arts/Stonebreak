@@ -1,0 +1,63 @@
+{
+  "format": "stonebreak.heldGrips",
+  "version": 1,
+  "comment": "Default grip per held kind (#458): socket, then position (blocks), rotation (XYZ Euler degrees) and uniform scale in that socket's frame, applied to the object's canonical held frame (sprite: centred, one unit across, the image's bottom-left-to-top-right diagonal along +Y, its front facing +Z; block: unit cube on the origin; model: its hand transform). The player model faces -Z with its right hand at +X; at rest the grip sockets carry the model axes. An object's SBO 'held' record overrides its kind's grip.",
+  "kinds": {
+    "block": {
+      "socket": "grip_r",
+      "position": [
+        0.0,
+        -0.05,
+        -0.1
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 0.25
+    },
+    "tool": {
+      "socket": "grip_r",
+      "position": [
+        0.0,
+        0.096,
+        -0.167
+      ],
+      "rotation": [
+        -60.0,
+        -90.0,
+        0.0
+      ],
+      "scale": 0.55
+    },
+    "item": {
+      "socket": "grip_r",
+      "position": [
+        0.0,
+        0.02,
+        -0.12
+      ],
+      "rotation": [
+        -10.0,
+        90.0,
+        -45.0
+      ],
+      "scale": 0.3
+    },
+    "model": {
+      "socket": "grip_r",
+      "position": [
+        0.0,
+        0.0,
+        -0.1
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 1.0
+    }
+  }
+}

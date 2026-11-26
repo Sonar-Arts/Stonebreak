@@ -35,15 +35,8 @@ import com.stonebreak.rendering.gameWorld.UnderwaterFog;
  */
 public class DropRenderer {
 
-    /**
-     * Sprite mesh → socket frame: recentre the mesh (it is built raised for the hand pose), scale a
-     * 16-pixel sprite to one unit, and turn the item sprites' bottom-left-to-top-right diagonal
-     * (handle to tip) onto +Y.
-     */
-    private static final Matrix4f SOCKET_SPRITE_TRANSFORM = new Matrix4f()
-            .rotateZ((float) Math.toRadians(45.0))
-            .scale(1.0f / (16 * SpriteVoxelizer.getSpriteScale()))
-            .translate(0.0f, -SpriteVoxelizer.getVerticalOffset(), 0.0f);
+    /** Lift of a voxelized item drop above its entity position (the sprite mesh is built raised for the hand). */
+    private static final float VOXEL_DROP_LIFT = 1.3f;
 
     private final BlockTextureArray blockTextureArray;
     private final SBOHandMeshRegistry sboHandMeshRegistry;
@@ -315,21 +308,20 @@ public class DropRenderer {
     }
     
     /**
-     * Render the held item of every visible player-shaped entity at its hand.
-     * Dispatches on the entity's resolved {@link com.stonebreak.items.Item}:
-     * blocks render as a textured cube, flowers as their SBO cross mesh, and
-     * tools/items as 3D voxelized sprites — the same three forms the first-person
-     * hand uses, so a decoy mirrors whatever the caster is holding.
-     *
-     * <p>This is intentionally separate from {@link #renderDrops} so callers
-     * can sequence the two passes (drops first, held items second) and so the
-     * remote-player list isn't dragged through the drop iteration.
+     * One held object to draw this frame (#458): what it is, its SBO state (null = default) and its canonical held
+     * frame in render space ({@link HeldItemFrames}: the grip on the posed body's grip socket).
      */
-    public void renderHeldItems(java.util.List<com.stonebreak.mobs.entities.RemotePlayer> players,
-                                 ShaderProgram shaderProgram,
-                                 Matrix4f projectionMatrix, Matrix4f viewMatrix,
-                                 World world, org.joml.Vector3dc cameraPos) {
-        if (players == null || players.isEmpty() || displayMeshes == null) return;
+    public record HeldDraw(com.stonebreak.items.Item item, String state, Matrix4f frame) {}
+
+    /**
+     * Draws the held objects of player-shaped bodies (the local player in third person, other players, decoys) on
+     * their grip sockets (#458). Dispatches on the object: blocks as their hand mesh (SBO display mesh, else a
+     * textured cube; a unit cube on the frame's origin), item models as their model, everything else as its
+     * voxelized sprite ({@link HeldItemFrames#SPRITE}) - the canonical held frames the grips are authored against.
+     */
+    public void renderHeldItems(java.util.List<HeldDraw> draws, ShaderProgram shaderProgram,
+                                Matrix4f projectionMatrix, Matrix4f viewMatrix, org.joml.Vector3dc cameraPos) {
+        if (draws == null || draws.isEmpty() || displayMeshes == null) return;
 
         shaderProgram.bind();
         shaderProgram.setUniform("projectionMatrix", projectionMatrix);
@@ -348,32 +340,17 @@ public class DropRenderer {
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         glEnable(GL_DEPTH_TEST);
 
-        final float HAND_SCALE   = 0.30f;
-
-        org.joml.Vector3d handPosition = new org.joml.Vector3d();
-        for (com.stonebreak.mobs.entities.RemotePlayer rp : players) {
-            if (!rp.isAlive()) continue;
-            com.stonebreak.items.Item held = rp.getHeldItem();
-            if (held == null) continue;
-
-            // Model-space body yaw — must match the figure the item is parented to
-            // (the raw rotation.y is camera-space for networked remote players).
-            float yawRad = (float) Math.toRadians(rp.getBodyYaw());
-            org.joml.Vector3d hand = rp.handPosition(handPosition);
-            double handX = hand.x;
-            double handY = hand.y;
-            double handZ = hand.z;
-
+        Matrix4f modelView = new Matrix4f();
+        for (HeldDraw draw : draws) {
+            com.stonebreak.items.Item held = draw.item();
+            Matrix4f frame = draw.frame();
             if (held instanceof BlockType blockType && blockType != BlockType.AIR) {
                 DisplayMesh sboMesh = sboHandMeshRegistry != null
                         ? sboHandMeshRegistry.getMesh(blockType)
                         : null;
                 boolean isFlower = sboMesh != null && sboHandMeshRegistry.isCutoutMesh(blockType);
-                RenderOrigin.modelAt(dropModelMatrix, handX, handY, handZ)
-                        .rotateY(yawRad)
-                        .scale(HAND_SCALE);
-                shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
-                groundFogAt(shaderProgram, dropModelMatrix);
+                shaderProgram.setUniform("viewMatrix", modelView.set(viewMatrix).mul(frame));
+                groundFogAt(shaderProgram, frame);
 
                 DisplayMesh mesh = sboMesh != null ? sboMesh : getDropCubeMesh(blockType);
                 boolean isTransparent = isTransparentBlock(blockType);
@@ -398,21 +375,26 @@ public class DropRenderer {
                 mesh.unbind();
                 shaderProgram.setUniform("u_forceAlphaTest", false);
                 glDepthMask(true);
+            } else if (com.stonebreak.items.ItemModels.of(held) != null) {
+                com.stonebreak.items.ItemModels.ItemModel model = com.stonebreak.items.ItemModels.of(held);
+                com.stonebreak.rendering.Renderer renderer = com.stonebreak.core.Game.getRenderer();
+                if (renderer != null && renderer.getEntityRenderer() != null) {
+                    renderer.getEntityRenderer().renderItemModel(model,
+                            new Matrix4f(frame).mul(model.handTransform(new Matrix4f())), viewMatrix,
+                            projectionMatrix, false);
+                    shaderProgram.bind();
+                }
             } else if (held instanceof ItemType itemType && SpriteVoxelizer.isVoxelizable(itemType)) {
-                // Voxelized tool/item: position the same world-space sprite pipeline drops use
-                // at the hand (no spin), then let the drop helper drive the voxel render.
-                RenderOrigin.modelAt(dropModelMatrix, handX, handY, handZ)
-                        .rotateY(yawRad)
-                        .scale(HeldItemPose.TOOL_SCALE);
-                shaderProgram.setUniform("viewMatrix", new Matrix4f(viewMatrix).mul(dropModelMatrix));
-                groundFogAt(shaderProgram, dropModelMatrix);
+                shaderProgram.setUniform("viewMatrix", modelView.set(viewMatrix).mul(frame));
+                groundFogAt(shaderProgram, frame);
                 glDisable(GL_BLEND);
                 glDepthMask(true);
-                renderVoxelizedItemDrop(itemType, null);
+                voxelizedSpriteRenderer.renderVoxelizedSprite(itemType, draw.state(),
+                        new Matrix4f(HeldItemFrames.SPRITE));
             }
         }
 
-        // Restore shared shader state — the loop overwrites viewMatrix per player and tweaks
+        // Restore shared shader state — the loop overwrites viewMatrix per draw and tweaks
         // u_color/u_useTextureArray/u_useSolidColor/u_isUIElement/depthMask. The subsequent
         // chunk transparent pass relies on viewMatrix being the camera view AND
         // u_useTextureArray=true (it does not re-bind either). If we leave the per-hand
@@ -433,7 +415,6 @@ public class DropRenderer {
         shaderProgram.setUniform("u_useTextureArray", true);
         shaderProgram.setUniform("u_color", new Vector4f(1.0f, 1.0f, 1.0f, 1.0f));
     }
-
     /**
      * Fogs the next draw by the Shade's ground fog at the model's origin (render space).
      * These draws fold their model into viewMatrix, so the shader's fragPos is
@@ -594,7 +575,7 @@ public class DropRenderer {
      * Draws the held items mobs carry on their sockets (a goblin's dagger or bow), queued by the
      * entity pass at each socket's posed matrix. In the socket frame the item is centred on the
      * origin, one unit across, lying in the XY plane with its long axis along +Y (see
-     * {@link #SOCKET_SPRITE_TRANSFORM}); the socket's own transform does the rest of the fitting.
+     * {@link #new Matrix4f(HeldItemFrames.SPRITE)}); the socket's own transform does the rest of the fitting.
      */
     public void renderSocketItems(SocketItemQueue queue, ShaderProgram shaderProgram,
                                   Matrix4f projectionMatrix, Matrix4f viewMatrix, org.joml.Vector3dc cameraPos) {
@@ -621,9 +602,9 @@ public class DropRenderer {
             groundFogAt(shaderProgram, entry.socketMatrix());
             if (entry.cooksInto() != null && SpriteVoxelizer.isVoxelizable(entry.cooksInto())) {
                 voxelizedSpriteRenderer.renderCookingSprite(entry.type(), entry.cooksInto(), entry.cooked(),
-                        SOCKET_SPRITE_TRANSFORM);
+                        new Matrix4f(HeldItemFrames.SPRITE));
             } else {
-                voxelizedSpriteRenderer.renderVoxelizedSprite(entry.type(), entry.state(), SOCKET_SPRITE_TRANSFORM);
+                voxelizedSpriteRenderer.renderVoxelizedSprite(entry.type(), entry.state(), new Matrix4f(HeldItemFrames.SPRITE));
             }
         }
 
@@ -655,7 +636,7 @@ public class DropRenderer {
         // Apply drop-specific adjustments to counteract hand-held positioning
         // VoxelizedSpriteRenderer has BASE_TRANSLATION.y = -1.1f for hand positioning
         // We need to lift item drops higher so they don't sink into blocks
-        float dropYOffset = HeldItemPose.VOXEL_DROP_LIFT; // Compensate for base translation + extra lift for floating
+        float dropYOffset = VOXEL_DROP_LIFT; // Compensate for base translation + extra lift for floating
         voxelizedSpriteRenderer.adjustInstanceTransform(
             0.0f, dropYOffset, 0.0f,     // Translation: lift Y position
             0.0f, 0.0f, 0.0f,            // Rotation: no additional rotation needed

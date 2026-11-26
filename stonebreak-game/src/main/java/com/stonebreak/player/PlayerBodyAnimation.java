@@ -27,9 +27,10 @@ final class PlayerBodyAnimation {
 
     /** Poses the body for this tick from the player's replicated-style state. */
     void animate(float dt, short stateFlags, float horizontalSpeed, boolean seated, float headYaw, float headPitch,
-                 PlayerBodyAnimator.Events events) {
+                 int heldKind, float bowDraw, PlayerBodyAnimator.Events events) {
         if (animator == null) animator = PlayerBodyAnimator.player();
-        animator.update(dt, inputs.set(stateFlags, horizontalSpeed, seated, headYaw, headPitch), events);
+        animator.update(dt, inputs.set(stateFlags, horizontalSpeed, seated, headYaw, headPitch)
+                .held(heldKind, bowDraw), events);
     }
 
     PlayerBodyOrientation getBodyOrientation() { return bodyOrientation; }

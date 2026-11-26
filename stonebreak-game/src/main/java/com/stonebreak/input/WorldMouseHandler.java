@@ -99,7 +99,7 @@ final class WorldMouseHandler {
             return;
         }
 
-        player.startAttackAnimation(); // Animate for interaction attempts as well
+        player.startUseAnimation(); // Animate for interaction attempts as well (ACTION_USE until refined)
 
         if (!held.isEmpty() && held.getItem() == ItemType.STAFF) {
             castFireBolt(player);
@@ -131,6 +131,7 @@ final class WorldMouseHandler {
         if (!held.isEmpty() && held.isFood() && !player.isFullHealth()) {
             ItemType foodType = held.asItemType();
             if (foodType != null && foodType.getHealAmount() > 0) {
+                player.markAction(com.stonebreak.network.packet.player.PlayerStateFlags.ACTION_EAT);
                 player.heal(foodType.getHealAmount());
                 // Consume via removeItem so its depletion auto-switch moves the
                 // next matching stack into the selected slot (#64/#355); the server

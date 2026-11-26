@@ -12,6 +12,7 @@ import com.stonebreak.player.Camera;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.models.blocks.AnimatedBlockRenderer;
 import com.stonebreak.world.World;
+import org.joml.Matrix4f;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.joml.Vector3f;
@@ -37,10 +38,10 @@ public final class DynamicLights {
     private static final float HELD_FORWARD = 0.35f;
     private static final float HELD_RIGHT = 0.30f;
     private static final float HELD_UP = -0.25f;
-    /** A remote player's torch flame sits this far above their hand. */
-    private static final float REMOTE_FLAME_UP = 0.25f;
-    /** A remote player's torch falls back to their chest when the hand is inside a wall. */
-    private static final float REMOTE_CHEST_UP = 1.2f;
+    /** The flame sits this far above the torch sprite's tip (blocks, world up). */
+    private static final float FLAME_ABOVE_TIP = 0.02f;
+    /** A held torch falls back to its holder's chest (this much of their height) when the flame is in a wall. */
+    private static final float CHEST_FRACTION = 0.7f;
     /** Distant, unshadowed lights; matches {@code MAX_FAR_POINT_LIGHTS} in far_lights.glsl. */
     public static final int MAX_FAR_LIGHTS = 64;
     private static final NearestLightSources nearest =
@@ -150,7 +151,7 @@ public final class DynamicLights {
                 for (RemotePlayer rp : remotePlayers) {
                     if (!isHoldingTorch(rp) || !com.stonebreak.rendering.models.entities.EntityRenderer
                             .isInRenderableChunk(rp, world)) continue;
-                    float distance = (float) rp.handPosition(scratch).distanceSquared(cameraPos);
+                    float distance = (float) heldFlame(rp, scratch).distanceSquared(cameraPos);
                     if (distance <= MAX_DISTANCE_SQ) nearest.offer(rp, distance);
                 }
             }
@@ -227,6 +228,12 @@ public final class DynamicLights {
      * otherwise black the torch out whenever the player faces a nearby wall.
      */
     private static void heldTorchPosition(World world, Player player, Vector3d out) {
+        if (player.isThirdPerson()) {
+            // Third person (#458): from the torch in the body's hand, like everyone else's.
+            Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(player, new Matrix4f());
+            flameOrChest(world, frame, player.getPosition(), out);
+            return;
+        }
         Camera camera = player.getCamera();
         Vector3d eye = camera.getPosition();
         for (float scale = 1f; scale >= 0.5f; scale *= 0.5f) {
@@ -240,18 +247,37 @@ public final class DynamicLights {
     }
 
     /**
-     * A remote player's torch flame: just above the hand their held item is drawn at, falling
-     * back to the hand and then their chest when it would sit inside a block (a player hugging a
-     * wall would otherwise black their own torch out).
+     * A remote player's or decoy's torch flame (#458): just past the tip of the torch on their grip socket, falling
+     * back to their chest when it would sit inside a block (a player hugging a wall would otherwise black their own
+     * torch out) or before their body is posed.
      */
     private static void remoteTorchPosition(World world, RemotePlayer rp, Vector3d out) {
-        rp.handPosition(out);
-        out.y += REMOTE_FLAME_UP;
-        if (!isSolidAt(world, out)) return;
-        out.y -= REMOTE_FLAME_UP;
-        if (!isSolidAt(world, out)) return;
+        Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(rp, new Matrix4f());
+        flameOrChest(world, frame, rp.getPosition(), out);
+    }
+
+    /** The flame of the torch held in {@code frame} (null = not posed), else the holder's chest. */
+    private static void flameOrChest(World world, Matrix4f frame, Vector3d feet, Vector3d out) {
+        if (frame != null && flamePoint(frame, out) && !isSolidAt(world, out)) return;
+        out.set(feet.x, feet.y + com.stonebreak.player.PlayerCharacter.get().height() * CHEST_FRACTION, feet.z);
+    }
+
+    /** {@code rp}'s held flame for distance ranking (the chest before its body is posed). */
+    private static Vector3d heldFlame(RemotePlayer rp, Vector3d out) {
+        Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(rp, new Matrix4f());
+        if (frame != null && flamePoint(frame, out)) return out;
         Vector3d feet = rp.getPosition();
-        out.set(feet.x, feet.y + REMOTE_CHEST_UP, feet.z);
+        return out.set(feet.x, feet.y + com.stonebreak.player.PlayerCharacter.get().height() * CHEST_FRACTION, feet.z);
+    }
+
+    /** The flame point of a torch held in {@code frame}; false when the torch sprite has no voxels. */
+    private static boolean flamePoint(Matrix4f frame, Vector3d out) {
+        org.joml.Vector3f tip = com.stonebreak.rendering.models.entities.HeldItemFrames.spriteTip(
+                TorchBlock.item());
+        if (tip == null) return false;
+        com.stonebreak.rendering.models.entities.HeldItemFrames.worldPoint(frame, tip, out);
+        out.y += FLAME_ABOVE_TIP;
+        return true;
     }
 
     private static boolean isSolidAt(World world, Vector3d p) {

@@ -3,7 +3,7 @@ package com.stonebreak.rendering.player.items;
 import com.openmason.engine.rendering.sprite.VoxelData;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.player.Player;
-import com.stonebreak.rendering.models.entities.HeldItemPose;
+import com.stonebreak.rendering.models.entities.HeldItemFrames;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import org.joml.Vector3f;
 
@@ -33,7 +33,10 @@ public final class StaffHead {
             return null;
         }
         if (player.isThirdPerson()) {
-            return HeldItemPose.toolPointWorld(player.getPosition(), player.getBodyYaw(), head, new org.joml.Vector3d());
+            // The staff on the body's grip socket (#458); the eye-height fallback is RaycastEngine's.
+            org.joml.Matrix4f frame = HeldItemFrames.of(player, new org.joml.Matrix4f());
+            return frame == null ? null : HeldItemFrames.worldPoint(frame,
+                    HeldItemFrames.spritePoint(head, new Vector3f()), new org.joml.Vector3d());
         }
         com.stonebreak.rendering.Renderer renderer = com.stonebreak.core.Game.getRenderer();
         return renderer != null ? renderer.getPlayerArmRenderer().heldPointWorld(player, head) : null;

@@ -161,6 +161,9 @@ public final class AssetExportBuilder {
         if (n.has("weapon")) {
             gameplay = gameplay.withWeapon(weapon(n.get("weapon")));
         }
+        if (n.has("held")) {
+            gameplay = gameplay.withHeld(held(n.get("held")));
+        }
         gameplay.applyTo(params); // the stonebreak:gameplay extension (#383)
         return params;
     }
@@ -319,6 +322,21 @@ public final class AssetExportBuilder {
         }
     }
 
+    /**
+     * Held grip (#458): {@code {socket, position: [x,y,z], rotation: [x,y,z], scale}}; {@code null} = the held kind's
+     * default grip.
+     */
+    public static SboGameplay.HeldData held(JsonNode h) {
+        if (h == null || h.isNull()) {
+            return null;
+        }
+        try {
+            return com.stonebreak.gameplay.SboGameplayCodec.heldOf(h);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("invalid_params: held — " + ex.getMessage(), ex);
+        }
+    }
+
     /** A tier as an int or a tier name ({@code wood|stone|iron|diamond}). */
     private static int tier(JsonNode v, String where) {
         int tier = v.isNumber() ? v.asInt() : ToolMiningRules.parseTier(v.asText());
@@ -469,6 +487,7 @@ public final class AssetExportBuilder {
         out.put("drops", describeDrops(g0.drops()));
         out.put("tool", describeTool(g0.tool()));
         out.put("weapon", describeWeapon(g0.weapon()));
+        out.put("held", describeHeld(g0.held()));
         out.put("rendering", Map.of("renderLayer", d.rendering().renderLayer(),
                 "transparent", d.rendering().transparent()));
         out.put("extensions", List.copyOf(d.extensions().keys()));
@@ -568,6 +587,18 @@ public final class AssetExportBuilder {
         return out;
     }
 
+    private static Map<String, Object> describeHeld(SboGameplay.HeldData held) {
+        if (held == null) {
+            return null;
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("socket", held.socket());
+        out.put("position", List.of(held.position().x(), held.position().y(), held.position().z()));
+        out.put("rotation", List.of(held.rotation().x(), held.rotation().y(), held.rotation().z()));
+        out.put("scale", held.scale());
+        return out;
+    }
+
     private static Map<String, Object> describeDrops(SboGameplay.DropData drops) {
         if (drops == null) {
             return null;
@@ -633,7 +664,8 @@ public final class AssetExportBuilder {
         g = g.withGameProperties(gp).withFuel(fuel)
                 .withDrops(p.has("drops") ? drops(p.get("drops")) : g.drops())
                 .withTool(p.has("tool") ? tool(p.get("tool")) : g.tool())
-                .withWeapon(p.has("weapon") ? weapon(p.get("weapon")) : g.weapon());
+                .withWeapon(p.has("weapon") ? weapon(p.get("weapon")) : g.weapon())
+                .withHeld(p.has("held") ? held(p.get("held")) : g.held());
         SBOFormat.Document patched = new SBOFormat.Document(
                 b.version(),
                 text(p, "objectId", b.objectId()),

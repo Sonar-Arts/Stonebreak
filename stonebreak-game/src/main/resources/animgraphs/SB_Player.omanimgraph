@@ -28,6 +28,22 @@
     {
       "name": "attacking",
       "type": "bool"
+    },
+    {
+      "name": "heldKind",
+      "type": "int"
+    },
+    {
+      "name": "action",
+      "type": "int"
+    },
+    {
+      "name": "bowDraw",
+      "type": "float"
+    },
+    {
+      "name": "firstPerson",
+      "type": "float"
     }
   ],
   "slots": [
@@ -36,7 +52,13 @@
     "sprinting",
     "jumping",
     "sitting",
-    "attacking"
+    "attacking",
+    "fp_idle",
+    "fp_swing",
+    "fp_use",
+    "fp_place",
+    "fp_eat",
+    "fp_bow_draw"
   ],
   "masks": [
     {
@@ -48,7 +70,7 @@
       ]
     }
   ],
-  "root": "out",
+  "root": "view",
   "nodes": [
     {
       "id": "out",
@@ -462,6 +484,229 @@
           "mask": "upperBody"
         }
       ]
+    },
+    {
+      "id": "fpIdle",
+      "type": "clip",
+      "slot": "fp_idle"
+    },
+    {
+      "id": "fpSwing",
+      "type": "clip",
+      "slot": "fp_swing"
+    },
+    {
+      "id": "fpUse",
+      "type": "clip",
+      "slot": "fp_use"
+    },
+    {
+      "id": "fpPlace",
+      "type": "clip",
+      "slot": "fp_place"
+    },
+    {
+      "id": "fpEat",
+      "type": "clip",
+      "slot": "fp_eat"
+    },
+    {
+      "id": "fpBowDraw",
+      "type": "clip",
+      "slot": "fp_bow_draw"
+    },
+    {
+      "id": "fp",
+      "type": "stateMachine",
+      "entry": "idle",
+      "states": [
+        {
+          "name": "idle",
+          "node": "fpIdle"
+        },
+        {
+          "name": "swing",
+          "node": "fpSwing"
+        },
+        {
+          "name": "use",
+          "node": "fpUse"
+        },
+        {
+          "name": "place",
+          "node": "fpPlace"
+        },
+        {
+          "name": "eat",
+          "node": "fpEat"
+        },
+        {
+          "name": "bow",
+          "node": "fpBowDraw"
+        }
+      ],
+      "transitions": [
+        {
+          "from": "*",
+          "to": "bow",
+          "conditions": [
+            {
+              "param": "bowDraw",
+              "op": ">",
+              "value": 0
+            }
+          ],
+          "priority": 2,
+          "blend": 0.1,
+          "mode": "crossfade"
+        },
+        {
+          "from": "bow",
+          "to": "idle",
+          "conditions": [
+            {
+              "param": "bowDraw",
+              "op": "<=",
+              "value": 0
+            }
+          ],
+          "blend": 0.15,
+          "mode": "crossfade"
+        },
+        {
+          "from": "idle",
+          "to": "swing",
+          "conditions": [
+            {
+              "param": "attacking"
+            },
+            {
+              "param": "action",
+              "op": "==",
+              "value": 0
+            }
+          ],
+          "priority": 1,
+          "blend": 0.08,
+          "mode": "crossfade"
+        },
+        {
+          "from": "idle",
+          "to": "use",
+          "conditions": [
+            {
+              "param": "attacking"
+            },
+            {
+              "param": "action",
+              "op": "==",
+              "value": 1
+            }
+          ],
+          "priority": 1,
+          "blend": 0.08,
+          "mode": "crossfade"
+        },
+        {
+          "from": "idle",
+          "to": "place",
+          "conditions": [
+            {
+              "param": "attacking"
+            },
+            {
+              "param": "action",
+              "op": "==",
+              "value": 2
+            }
+          ],
+          "priority": 1,
+          "blend": 0.08,
+          "mode": "crossfade"
+        },
+        {
+          "from": "idle",
+          "to": "eat",
+          "conditions": [
+            {
+              "param": "attacking"
+            },
+            {
+              "param": "action",
+              "op": "==",
+              "value": 3
+            }
+          ],
+          "priority": 1,
+          "blend": 0.08,
+          "mode": "crossfade"
+        },
+        {
+          "from": "swing",
+          "to": "idle",
+          "conditions": [
+            {
+              "param": "attacking",
+              "op": "==",
+              "value": false
+            }
+          ],
+          "blend": 0.12,
+          "mode": "crossfade"
+        },
+        {
+          "from": "use",
+          "to": "idle",
+          "conditions": [
+            {
+              "param": "attacking",
+              "op": "==",
+              "value": false
+            }
+          ],
+          "blend": 0.12,
+          "mode": "crossfade"
+        },
+        {
+          "from": "place",
+          "to": "idle",
+          "conditions": [
+            {
+              "param": "attacking",
+              "op": "==",
+              "value": false
+            }
+          ],
+          "blend": 0.12,
+          "mode": "crossfade"
+        },
+        {
+          "from": "eat",
+          "to": "idle",
+          "conditions": [
+            {
+              "param": "attacking",
+              "op": "==",
+              "value": false
+            }
+          ],
+          "blend": 0.12,
+          "mode": "crossfade"
+        }
+      ]
+    },
+    {
+      "id": "view",
+      "type": "layer",
+      "base": "out",
+      "layers": [
+        {
+          "node": "fp",
+          "mode": "override",
+          "weightParam": "firstPerson",
+          "view": "firstPerson"
+        }
+      ]
     }
   ],
   "editor": {
@@ -529,6 +774,38 @@
       "walk": [
         -1680.0,
         -60.0
+      ],
+      "view": [
+        280.0,
+        0.0
+      ],
+      "fp": [
+        0.0,
+        240.0
+      ],
+      "fpIdle": [
+        -280.0,
+        120.0
+      ],
+      "fpSwing": [
+        -280.0,
+        240.0
+      ],
+      "fpUse": [
+        -280.0,
+        360.0
+      ],
+      "fpPlace": [
+        -280.0,
+        480.0
+      ],
+      "fpEat": [
+        -280.0,
+        600.0
+      ],
+      "fpBowDraw": [
+        -280.0,
+        720.0
       ]
     },
     "states": {
@@ -590,6 +867,32 @@
         "ready": [
           -160.0,
           0.0
+        ]
+      },
+      "fp": {
+        "idle": [
+          -160.0,
+          0.0
+        ],
+        "swing": [
+          60.0,
+          -150.0
+        ],
+        "use": [
+          160.0,
+          -50.0
+        ],
+        "place": [
+          160.0,
+          50.0
+        ],
+        "eat": [
+          60.0,
+          150.0
+        ],
+        "bow": [
+          -60.0,
+          -150.0
         ]
       }
     },

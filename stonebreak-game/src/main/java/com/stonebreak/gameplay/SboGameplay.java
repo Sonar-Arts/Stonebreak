@@ -28,6 +28,9 @@ import java.util.Objects;
  * @param dictionaries    ids of the item dictionaries this object belongs to (never null), e.g.
  *                        {@code stonebreak:wooden_planks}; recipes name one as {@code #id}
  * @param fuelTable       burn times for other objects / whole dictionaries (the furnace's)
+ * @param connectTags     tags neighbours' multipart conditions can test this block for
+ * @param multipart       the neighbour-driven shape
+ * @param held            how the object sits in a hand (null = its held kind's default grip, #458)
  */
 public record SboGameplay(
         GameProperties gameProperties,
@@ -40,7 +43,8 @@ public record SboGameplay(
         List<String> dictionaries,
         FuelTableData fuelTable,
         List<String> connectTags,
-        MultipartData multipart
+        MultipartData multipart,
+        HeldData held
 ) {
 
     /** Normalises {@code dictionaries}: never null, no blanks, no duplicates, order kept. */
@@ -52,7 +56,7 @@ public record SboGameplay(
     /** The legacy seven-part constructor: no dictionaries, no fuel table, no shape data. */
     public SboGameplay(GameProperties gameProperties, RecipeData recipes, SmeltingRecipeData smeltingRecipes,
                        FuelData fuel, DropData drops, ToolData tool, WeaponData weapon) {
-        this(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, List.of(), null, List.of(), null);
+        this(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, List.of(), null, List.of(), null, null);
     }
 
     /** Before shape data: dictionaries and a fuel table, no connect tags or multipart. */
@@ -60,7 +64,16 @@ public record SboGameplay(
                        FuelData fuel, DropData drops, ToolData tool, WeaponData weapon,
                        List<String> dictionaries, FuelTableData fuelTable) {
         this(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries, fuelTable,
-                List.of(), null);
+                List.of(), null, null);
+    }
+
+    /** Before held-item grips (#458): every section but {@code held}. */
+    public SboGameplay(GameProperties gameProperties, RecipeData recipes, SmeltingRecipeData smeltingRecipes,
+                       FuelData fuel, DropData drops, ToolData tool, WeaponData weapon,
+                       List<String> dictionaries, FuelTableData fuelTable, List<String> connectTags,
+                       MultipartData multipart) {
+        this(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries, fuelTable,
+                connectTags, multipart, null);
     }
 
     private static List<String> normaliseTags(List<String> tags) {
@@ -132,65 +145,76 @@ public record SboGameplay(
     public boolean isEmpty() {
         return gameProperties == null && recipes == null && smeltingRecipes == null && fuel == null
                 && drops == null && tool == null && weapon == null && dictionaries.isEmpty() && fuelTable == null
-                && connectTags.isEmpty() && multipart == null;
+                && connectTags.isEmpty() && multipart == null && held == null;
     }
 
     public SboGameplay withGameProperties(GameProperties v) {
         return new SboGameplay(v, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
-                fuelTable, connectTags, multipart);
+                fuelTable, connectTags, multipart, held);
     }
 
     public SboGameplay withRecipes(RecipeData v) {
         return new SboGameplay(gameProperties, v, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
-                fuelTable, connectTags, multipart);
+                fuelTable, connectTags, multipart, held);
     }
 
     public SboGameplay withSmeltingRecipes(SmeltingRecipeData v) {
         return new SboGameplay(gameProperties, recipes, v, fuel, drops, tool, weapon, dictionaries,
-                fuelTable, connectTags, multipart);
+                fuelTable, connectTags, multipart, held);
     }
 
     public SboGameplay withFuel(FuelData v) {
         return new SboGameplay(gameProperties, recipes, smeltingRecipes, v, drops, tool, weapon, dictionaries,
-                fuelTable, connectTags, multipart);
+                fuelTable, connectTags, multipart, held);
     }
 
     public SboGameplay withDrops(DropData v) {
         return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, v, tool, weapon, dictionaries,
-                fuelTable, connectTags, multipart);
+                fuelTable, connectTags, multipart, held);
     }
 
     public SboGameplay withTool(ToolData v) {
         return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, v, weapon, dictionaries,
-                fuelTable, connectTags, multipart);
+                fuelTable, connectTags, multipart, held);
     }
 
     public SboGameplay withWeapon(WeaponData v) {
         return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, v, dictionaries,
-                fuelTable, connectTags, multipart);
+                fuelTable, connectTags, multipart, held);
     }
 
     /** Replaces the dictionaries this object belongs to (null/empty = none). */
     public SboGameplay withDictionaries(List<String> v) {
         return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, v,
-                fuelTable, connectTags, multipart);
+                fuelTable, connectTags, multipart, held);
     }
 
     public SboGameplay withFuelTable(FuelTableData v) {
         return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
-                v, connectTags, multipart);
+                v, connectTags, multipart, held);
     }
 
     /** Replaces the tags neighbours' multipart conditions can test this block for. */
     public SboGameplay withConnectTags(List<String> v) {
         return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
-                fuelTable, v, multipart);
+                fuelTable, v, multipart, held);
     }
 
     /** Replaces the neighbour-driven shape (null/empty = none). */
     public SboGameplay withMultipart(MultipartData v) {
         return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
-                fuelTable, connectTags, v == null || v.parts().isEmpty() ? null : v);
+                fuelTable, connectTags, v == null || v.parts().isEmpty() ? null : v, held);
+    }
+
+    /** Replaces how the object sits in a hand (null = the held kind's default grip). */
+    public SboGameplay withHeld(HeldData v) {
+        return new SboGameplay(gameProperties, recipes, smeltingRecipes, fuel, drops, tool, weapon, dictionaries,
+                fuelTable, connectTags, multipart, v);
+    }
+
+    /** True when this SBO overrides its held kind's default grip. */
+    public boolean hasHeld() {
+        return held != null;
     }
 
     /** True when this SBO's shape depends on its neighbours. */
@@ -236,6 +260,42 @@ public record SboGameplay(
     /** True when this SBO declares itself a weapon. */
     public boolean hasWeapon() {
         return weapon != null;
+    }
+
+    /**
+     * How the object sits in a hand (#458): the grip that places it on a character socket, overriding the
+     * default grip of its held kind ({@code held/held_grips.json}). The item is drawn in its canonical held
+     * frame (a sprite centred on the origin, one unit across, handle-to-tip along +Y; a block a unit cube on
+     * the origin; a model at its origin), then by this grip, then by the socket's posed frame.
+     *
+     * @param socket   the character socket ({@code grip_r}, {@code grip_l}, ...); never blank
+     * @param position grip offset in the socket frame (blocks)
+     * @param rotation grip rotation, XYZ Euler degrees (the socket convention)
+     * @param scale    uniform size in the socket frame, {@code > 0}
+     */
+    public record HeldData(String socket, Vec3 position, Vec3 rotation, float scale) {
+
+        public HeldData {
+            Objects.requireNonNull(socket, "socket cannot be null");
+            socket = socket.strip();
+            if (socket.isEmpty()) throw new IllegalArgumentException("socket cannot be blank");
+            position = position == null ? Vec3.ZERO : position;
+            rotation = rotation == null ? Vec3.ZERO : rotation;
+            if (!Float.isFinite(scale) || scale <= 0f) {
+                throw new IllegalArgumentException("scale must be > 0, got " + scale);
+            }
+        }
+    }
+
+    /** A plain float triple (the format stays free of math libraries). */
+    public record Vec3(float x, float y, float z) {
+        public static final Vec3 ZERO = new Vec3(0f, 0f, 0f);
+
+        public Vec3 {
+            if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z)) {
+                throw new IllegalArgumentException("vector components must be finite");
+            }
+        }
     }
 
     /**

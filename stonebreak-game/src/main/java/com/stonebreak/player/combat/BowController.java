@@ -7,7 +7,8 @@ package com.stonebreak.player.combat;
  */
 public class BowController {
 
-    private static final float DRAW_DURATION  = 3.0f;
+    /** Seconds a full draw takes at speed 1 (remote bodies time the draw from the replicated flag with it). */
+    public static final float DRAW_DURATION  = 3.0f;
     private static final float MIN_DRAW_TIME  = 0.25f; // minimum hold before arrow fires
     private static final float MIN_ARROW_SPEED = 15.0f;
     public static final float MAX_ARROW_SPEED = 45.0f;

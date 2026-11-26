@@ -116,7 +116,9 @@ final class PlayerUpdatePipeline {
         bodyAnimation.orient(dt, state.getVelocity(), camera.getFront(), seated,
                 seated ? player.getRiding().seatYaw() : 0f);
         bodyAnimation.animate(dt, player.stateFlags(), player.getHorizontalSpeed(), seated,
-                player.getThirdPersonHeadYaw(), player.getThirdPersonHeadPitch(), bodyEvents);
+                player.getThirdPersonHeadYaw(), player.getThirdPersonHeadPitch(),
+                com.stonebreak.items.held.HeldKind.of(player.getHeldItem()).graphValue(),
+                player.isDrawingBow() ? player.getBowDrawProgress() : 0f, bodyEvents);
         if (Game.getWorld() != null) {
             // Listener-relative audio (#445): AudioSpace moves the audio origin, hands the mixer small floats.
             com.stonebreak.audio.AudioSpace.setListener(Game.getSoundSystem(), p, camera.getFront(), camera.getUp());

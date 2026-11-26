@@ -38,7 +38,7 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
     /** The top-level fields SBO 1.1–1.10 used for this data. */
     public static final Set<String> LEGACY_FIELDS = Set.of(
             "gameProperties", "recipes", "smeltingRecipes", "fuel", "drops", "tool", "weapon",
-            "dictionaries", "fuelTable", "connectTags", "multipart");
+            "dictionaries", "fuelTable", "connectTags", "multipart", "held");
 
     private SboGameplayCodec() {
     }
@@ -62,7 +62,7 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
         }
         return new SboGameplay(readGameProperties(root), readRecipes(root), readSmelting(root), readFuel(root),
                 readDrops(root), readTool(root), readWeapon(root), readDictionaries(root), readFuelTable(root),
-                readConnectTags(root), readMultipart(root));
+                readConnectTags(root), readMultipart(root), readHeld(root));
     }
 
     private static boolean present(JsonNode root, String field) {
@@ -325,6 +325,43 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
         }
     }
 
+    /** The {@code held} section (#458); a malformed one degrades to the held kind's default grip (logged). */
+    static SboGameplay.HeldData readHeld(JsonNode root) {
+        if (!present(root, "held") || !root.get("held").isObject()) return null;
+        try {
+            return heldOf(root.get("held"));
+        } catch (IllegalArgumentException ex) {
+            logger.warn("Ignoring invalid held block in manifest: {}", ex.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * One {@code held} object ({@code socket}, {@code position}, {@code rotation}, {@code scale}); throws
+     * {@link IllegalArgumentException} when malformed (the held-grip defaults file reads its entries with it).
+     */
+    public static SboGameplay.HeldData heldOf(JsonNode h) {
+        if (h == null || !h.isObject()) throw new IllegalArgumentException("held must be an object");
+        return new SboGameplay.HeldData(
+                h.has("socket") ? h.get("socket").asText() : "",
+                readVec3(h.get("position")),
+                readVec3(h.get("rotation")),
+                h.has("scale") ? (float) h.get("scale").asDouble() : 1f);
+    }
+
+    /** {@code [x, y, z]}; absent = zero, anything else malformed throws. */
+    static SboGameplay.Vec3 readVec3(JsonNode node) {
+        if (node == null || node.isNull()) return SboGameplay.Vec3.ZERO;
+        if (!node.isArray() || node.size() != 3) {
+            throw new IllegalArgumentException("a vector must be [x, y, z]");
+        }
+        for (JsonNode c : node) {
+            if (!c.isNumber()) throw new IllegalArgumentException("a vector component must be a number");
+        }
+        return new SboGameplay.Vec3((float) node.get(0).asDouble(), (float) node.get(1).asDouble(),
+                (float) node.get(2).asDouble());
+    }
+
     /** A tier written as an int or a tier name ("stone"); unreadable values become 0 with a warning. */
     private static int readTier(JsonNode node, String where) {
         if (node == null || node.isNull()) return 0;
@@ -366,7 +403,20 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
             g.connectTags().forEach(tags::add);
         }
         if (g.hasMultipart()) out.set("multipart", encode(g.multipart()));
+        if (g.hasHeld()) out.set("held", encode(g.held()));
         return out;
+    }
+
+    private static ObjectNode encode(SboGameplay.HeldData held) {
+        ObjectNode n = JSON.createObjectNode().put("socket", held.socket());
+        n.set("position", encode(held.position()));
+        n.set("rotation", encode(held.rotation()));
+        n.put("scale", held.scale());
+        return n;
+    }
+
+    private static ArrayNode encode(SboGameplay.Vec3 v) {
+        return JSON.createArrayNode().add(v.x()).add(v.y()).add(v.z());
     }
 
     private static ArrayNode encode(MultipartData data) {

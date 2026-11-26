@@ -6,6 +6,7 @@ import com.openmason.engine.animgraph.AnimGraphInstance;
 import com.openmason.engine.character.CharacterDefinition;
 import com.openmason.engine.entity.model.EntityAsset;
 import com.openmason.engine.entity.model.EntityGeometry;
+import com.openmason.engine.rig.JointPalette;
 import com.openmason.engine.rig.Rig;
 import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.player.PlayerCharacter;
@@ -16,6 +17,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 
 /**
  * What every body of one player model shares (#457): the model, its rig, its character definition, its animation
@@ -42,6 +47,14 @@ public final class PlayerAnimationSet {
     public static final String SEATED = "seated";
     public static final String CROUCHED = "crouched";
     public static final String ATTACKING = "attacking";
+    /** What the hand holds ({@link com.stonebreak.items.held.HeldKind#graphValue()}, #458). */
+    public static final String HELD_KIND = "heldKind";
+    /** The kind of the current {@link #ATTACKING} action ({@link PlayerPoseInputs#ACTION_SWING} ...). */
+    public static final String ACTION = "action";
+    /** Bow draw 0..1 (#458). */
+    public static final String BOW_DRAW = "bowDraw";
+    /** The first-person view layer's weight: 0 until the rebuilt player brings first-person clips (#462). */
+    public static final String FIRST_PERSON = "firstPerson";
     /** The walk/run blend whose phase is the gait (footsteps, first-person bob) while clips carry no notifies. */
     public static final String GAIT_NODE = "gait";
     /** The notify that plants a foot; every other notify name plays the asset's FX/sound event of that name. */
@@ -58,6 +71,8 @@ public final class PlayerAnimationSet {
     private final AnimClipDocument[] slotClips;
     private final boolean footstepNotifies;
     final int speed, grounded, inWater, seated, crouched, attacking;
+    final int heldKind, action, bowDraw;
+    private final Map<String, Socket> sockets = new ConcurrentHashMap<>();
     final int gaitNode;
     final int headJoint;
 
@@ -137,6 +152,9 @@ public final class PlayerAnimationSet {
         this.seated = graph.param(SEATED);
         this.crouched = graph.param(CROUCHED);
         this.attacking = graph.param(ATTACKING);
+        this.heldKind = graph.param(HELD_KIND);
+        this.action = graph.param(ACTION);
+        this.bowDraw = graph.param(BOW_DRAW);
         this.gaitNode = graph.node(GAIT_NODE);
         this.headJoint = rig.headJoint();
     }
@@ -164,6 +182,51 @@ public final class PlayerAnimationSet {
     public EntityGeometry geometry() { return geometry; }
     public Rig rig() { return rig; }
     public AnimGraph graph() { return graph; }
+
+    /** The character definition (null for a model without one, e.g. the first-person arm). */
+    public CharacterDefinition character() { return character; }
+
+    /**
+     * A character socket resolved on this model's rig (#458): the joint it rides and its local {@code T·R·S}. Null
+     * when the model has no character, no such socket, or the socket's joint is not in the rig.
+     */
+    public Socket socket(String name) {
+        if (character == null || name == null) return null;
+        Socket s = sockets.computeIfAbsent(name, this::resolveSocket);
+        return s == Socket.MISSING ? null : s;
+    }
+
+    private Socket resolveSocket(String name) {
+        for (CharacterDefinition.Socket s : character.sockets()) {
+            if (!s.name().equals(name)) continue;
+            int joint = rig.find(s.jointId());
+            if (joint < 0) {
+                LOG.warn("{}: socket {} names joint {} that is not in the rig", asset.objectId(), name, s.jointId());
+                return Socket.MISSING;
+            }
+            Matrix4f local = new Matrix4f()
+                    .translate(s.pos().x(), s.pos().y(), s.pos().z())
+                    .rotateXYZ((float) Math.toRadians(s.rotDeg().x()), (float) Math.toRadians(s.rotDeg().y()),
+                            (float) Math.toRadians(s.rotDeg().z()))
+                    .scale(s.scale().x(), s.scale().y(), s.scale().z());
+            return new Socket(name, joint, local);
+        }
+        return Socket.MISSING;
+    }
+
+    /**
+     * A socket on this model: the rig joint whose skin matrix moves it and its rest-model-space {@code T·R·S} (the
+     * OMO attachment convention the {@code .omchar} sockets follow).
+     */
+    public record Socket(String name, int joint, Matrix4fc local) {
+        static final Socket MISSING = new Socket("", -1, new Matrix4f());
+
+        /** {@code base · K(joint) · local}: the socket's frame on a body posed into {@code palette}. */
+        public Matrix4f frame(JointPalette palette, Matrix4fc base, Matrix4f dest) {
+            palette.skinMatrix(joint, dest);
+            return base.mul(dest, dest).mul(local);
+        }
+    }
 
     /** Whether any bound clip carries {@link #FOOTSTEP} notifies (else the gait phase plants the feet). */
     public boolean footstepNotifies() { return footstepNotifies; }

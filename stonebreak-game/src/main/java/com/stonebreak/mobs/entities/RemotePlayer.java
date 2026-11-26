@@ -83,6 +83,8 @@ public class RemotePlayer extends LivingEntity {
 
     /** Latest replicated movement/action flags ({@code PlayerStateFlags} bits). */
     private volatile short stateFlags;
+    /** Seconds the replicated {@code DRAWING_BOW} flag has been up (0 when down). */
+    private float bowDrawSeconds;
 
     /**
      * Splash/ripple FX, the same as {@link Player}'s ({@link com.stonebreak.fx.bindings.SwimFx}), but
@@ -139,24 +141,15 @@ public class RemotePlayer extends LivingEntity {
     /** Held item identity for third-person hand rendering. {@code null} = empty-handed. */
     public Item getHeldItem() { return heldItem; }
 
-    /** Hand offset from the feet, in body space: right, up, forward (third-person held item). */
-    private static final float HAND_RIGHT = 0.35f;
-    private static final float HAND_UP = 1.2f;
-    private static final float HAND_FORWARD = 0.15f;
-
     /**
-     * Where this figure's held item sits, in world space: the one hand position the held-item
-     * renderer draws at and a held torch lights from. Turned with the model-space body yaw, the
-     * frame the figure itself is drawn in.
+     * The held object's SBO state as this body shows it (#458): a bow bends with the draw timed from the replicated
+     * {@code DRAWING_BOW} flag; other states do not replicate (null = default).
      */
-    public Vector3d handPosition(Vector3d out) {
-        float yawRad = (float) Math.toRadians(getBodyYaw());
-        float cos = (float) Math.cos(yawRad);
-        float sin = (float) Math.sin(yawRad);
-        // World vectors: forward = (-sin, 0, -cos), right = (cos, 0, -sin).
-        return out.set(position.x + HAND_RIGHT * cos - HAND_FORWARD * sin,
-                position.y + HAND_UP,
-                position.z - HAND_RIGHT * sin - HAND_FORWARD * cos);
+    public String heldItemState() {
+        return heldItem == com.stonebreak.items.ItemType.BOW
+                ? com.stonebreak.player.combat.BowController.sboStateFor(
+                        bowDrawSeconds / com.stonebreak.player.combat.BowController.DRAW_DURATION)
+                : null;
     }
     /** Sets the full held-item identity (block or tool/flower). Used by local-only figures. */
     public void setHeldItem(Item item) {
@@ -243,7 +236,13 @@ public class RemotePlayer extends LivingEntity {
      */
     protected boolean animateBody(float deltaTime) {
         if (bodyAnimator == null) bodyAnimator = com.stonebreak.player.animation.PlayerBodyAnimator.player();
-        poseInputs.set(stateFlags, horizontalSpeed, getVehicle() != null, getHeadYaw(), getHeadPitch());
+        // The bow draw is timed from the replicated flag's rise at the base draw speed (the owner's proficiency
+        // speeds its own draw; the estimate only shapes this body's pose).
+        bowDrawSeconds = com.stonebreak.network.packet.player.PlayerStateFlags.has(stateFlags,
+                com.stonebreak.network.packet.player.PlayerStateFlags.DRAWING_BOW) ? bowDrawSeconds + deltaTime : 0f;
+        poseInputs.set(stateFlags, horizontalSpeed, getVehicle() != null, getHeadYaw(), getHeadPitch())
+                .held(com.stonebreak.items.held.HeldKind.of(heldItem).graphValue(),
+                        bowDrawSeconds / com.stonebreak.player.combat.BowController.DRAW_DURATION);
         footContact = false;
         bodyAnimator.update(deltaTime, poseInputs, bodyUpdateInterval(), bodyEvents);
         return footContact;

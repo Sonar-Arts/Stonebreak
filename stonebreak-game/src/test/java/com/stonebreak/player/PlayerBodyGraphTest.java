@@ -58,6 +58,37 @@ class PlayerBodyGraphTest {
         for (int i = 0; i < count; i++) frames.add(new Frame(flags, velocity));
     }
 
+    /** #458: the action kind and the bow draw ride free flag bits and reach the graph's inputs. */
+    @Test
+    void theActionAndBowBitsReachThePoseInputs() {
+        int others = PlayerStateFlags.SPRINTING | PlayerStateFlags.STEALTHED | PlayerStateFlags.SWIMMING
+                | PlayerStateFlags.AIRBORNE | PlayerStateFlags.ON_GROUND | PlayerStateFlags.ATTACKING
+                | PlayerStateFlags.PARTIALLY_IN_WATER | PlayerStateFlags.MINING | PlayerStateFlags.FLYING
+                | PlayerStateFlags.DODGING | PlayerStateFlags.LIFESTEAL | PlayerStateFlags.DODGE_NOISE;
+        assertEquals(0, others & (PlayerStateFlags.ACTION_MASK | PlayerStateFlags.DRAWING_BOW), "free bits only");
+        assertEquals(0, PlayerStateFlags.ACTION_MASK & PlayerStateFlags.DRAWING_BOW);
+        assertTrue((PlayerStateFlags.ACTION_MASK | PlayerStateFlags.DRAWING_BOW) <= 0xFFFF, "16-bit flags");
+        for (int action = 0; action < 4; action++) {
+            short flags = (short) (PlayerStateFlags.ATTACKING | PlayerStateFlags.actionBits(action));
+            assertEquals(action, PlayerStateFlags.action(flags));
+            assertEquals(action, new PlayerPoseInputs().set(flags, 0f, false, 0f, 0f).action);
+        }
+        // A remote bow bends as its draw is timed from the replicated flag (base draw speed).
+        RemotePlayer rp = new RemotePlayer(null, new Vector3d(0, 64, 0), 7, "archer");
+        try {
+            rp.applyNetworkState(0, 64, 0, 0f, 0f);
+            rp.setHeldItem(com.stonebreak.items.ItemType.BOW);
+            rp.setStateFlags((short) (PlayerStateFlags.ON_GROUND | PlayerStateFlags.DRAWING_BOW));
+            for (int i = 0; i < 90; i++) rp.updateClientVisuals(DT);  // 1.5 s of a 3 s draw
+            assertEquals(com.stonebreak.player.combat.BowController.sboStateFor(0.5f), rp.heldItemState());
+            rp.setStateFlags((short) PlayerStateFlags.ON_GROUND);
+            rp.updateClientVisuals(DT);
+            assertEquals(null, rp.heldItemState(), "released: the bow is slack");
+        } finally {
+            rp.onRemovedFromWorld();
+        }
+    }
+
     @Test
     void localAndRemoteBodiesGivenTheSameInputsPoseTheSame() {
         RemotePlayer remote = new RemotePlayer(null, new Vector3d(), 7, "remote");
@@ -72,7 +103,7 @@ class PlayerBodyGraphTest {
             remote.setStateFlags(f.flags());
             remote.updateClientVisuals(DT);
             // The local player's own source: its replicated flags and speed, the head look of its orientation.
-            local.animate(DT, f.flags(), remote.getHorizontalSpeed(), false, remote.getHeadYaw(), remote.getHeadPitch(),
+            local.animate(DT, f.flags(), remote.getHorizontalSpeed(), false, remote.getHeadYaw(), remote.getHeadPitch(), 0, 0f,
                     PlayerBodyAnimator.Events.NONE);
             JointPalette r = remote.bodyAnimator().palette();
             JointPalette l = local.animator().palette();

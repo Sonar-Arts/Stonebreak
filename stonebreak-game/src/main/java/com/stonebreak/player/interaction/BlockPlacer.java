@@ -174,6 +174,8 @@ public class BlockPlacer {
         // in the block-change intent; the authoritative server validates it and
         // echoes the final state via BlockStateS2C.
         if (world.setBlockAt(placePos.x, placePos.y, placePos.z, selectedBlockType, true, placementState)) {
+            com.stonebreak.player.Player placer = com.stonebreak.core.Game.getPlayer();
+            if (placer != null) placer.markAction(com.stonebreak.network.packet.player.PlayerStateFlags.ACTION_PLACE);
             inventory.removeItem(selectedItem.getItem(), 1);
             BlockSounds.playPlace(selectedBlockType, placePos.x, placePos.y, placePos.z);
             com.stonebreak.fx.bindings.BlockFx.placeAt(selectedBlockType, placePos.x, placePos.y, placePos.z);

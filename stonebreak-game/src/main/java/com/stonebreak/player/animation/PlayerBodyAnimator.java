@@ -97,6 +97,9 @@ public final class PlayerBodyAnimator implements AutoCloseable {
         if (set.seated >= 0) g.setBool(set.seated, in.seated);
         if (set.crouched >= 0) g.setBool(set.crouched, in.crouched);
         if (set.attacking >= 0) g.setBool(set.attacking, attackLatch);
+        if (set.action >= 0) g.setInt(set.action, in.action);
+        if (set.heldKind >= 0) g.setInt(set.heldKind, in.heldKind);
+        if (set.bowDraw >= 0) g.setFloat(set.bowDraw, in.bowDraw);
         g.clearExtras();
         if (in.headYaw != 0f || in.headPitch != 0f) g.extra(set.headJoint, in.headYaw, in.headPitch, 0f, 0f, 0f);
         g.evaluate(pendingDt, null, palette);

@@ -19,6 +19,12 @@ public final class PlayerPoseInputs {
     /** Sneaking: stealth is the sneak mechanic ({@code STEALTHED}). */
     public boolean crouched;
     public boolean attacking;
+    /** What the current attacking action is ({@code PlayerStateFlags.ACTION_*}, #458). */
+    public int action;
+    /** What the hand holds ({@code HeldKind.graphValue()}, #458). */
+    public int heldKind;
+    /** Bow draw 0..1 (#458; 0 = not drawing). */
+    public float bowDraw;
     /** Head look relative to the body, degrees (the head joint's pre-rotation). */
     public float headYaw;
     public float headPitch;
@@ -32,13 +38,21 @@ public final class PlayerPoseInputs {
         this.seated = seated;
         this.crouched = PlayerStateFlags.has(flags, PlayerStateFlags.STEALTHED);
         this.attacking = PlayerStateFlags.has(flags, PlayerStateFlags.ATTACKING);
+        this.action = PlayerStateFlags.action(flags);
         this.headYaw = headYaw;
         this.headPitch = headPitch;
         return this;
     }
 
-    /** A standing body looking ahead (UI previews). Returns this. */
+    /** Sets what the hand holds and how far a bow is drawn (#458). Returns this. */
+    public PlayerPoseInputs held(int heldKind, float bowDraw) {
+        this.heldKind = heldKind;
+        this.bowDraw = Float.isFinite(bowDraw) ? Math.clamp(bowDraw, 0f, 1f) : 0f;
+        return this;
+    }
+
+    /** A standing body looking ahead, empty-handed (UI previews). Returns this. */
     public PlayerPoseInputs standing() {
-        return set((short) 0, 0f, false, 0f, 0f);
+        return set((short) 0, 0f, false, 0f, 0f).held(0, 0f);
     }
 }

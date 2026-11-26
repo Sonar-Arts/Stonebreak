@@ -75,6 +75,8 @@ public class Player {
     // Third-person body model
     public enum Perspective { FIRST_PERSON, THIRD_PERSON }
     private Perspective perspective = Perspective.FIRST_PERSON;
+    /** What the current attack-animation action is ({@code PlayerStateFlags.ACTION_*}, #458). */
+    private int actionKind = com.stonebreak.network.packet.player.PlayerStateFlags.ACTION_SWING;
     private final PlayerBodyAnimation bodyAnimation = new PlayerBodyAnimation();
     private final com.stonebreak.vehicles.PlayerRiding riding = new com.stonebreak.vehicles.PlayerRiding();
 
@@ -293,11 +295,45 @@ public class Player {
 
     // Attack animation
     public boolean isAttacking() { return c.attack.isAttacking(); }
-    public void startAttackAnimation() { c.attack.startAttackAnimation(); }
+    /** Starts the swing animation (an attack or a block break: {@code ACTION_SWING}). */
+    public void startAttackAnimation() {
+        actionKind = com.stonebreak.network.packet.player.PlayerStateFlags.ACTION_SWING;
+        c.attack.startAttackAnimation();
+    }
+    /**
+     * Starts the swing animation for a right-click interaction (#458): {@code ACTION_USE} until the interaction turns
+     * out to be a placement or a meal ({@link #markAction}).
+     */
+    public void startUseAnimation() {
+        actionKind = com.stonebreak.network.packet.player.PlayerStateFlags.ACTION_USE;
+        c.attack.startAttackAnimation();
+    }
+    /** Names what the current action turned out to be ({@code PlayerStateFlags.ACTION_*}). */
+    public void markAction(int action) { actionKind = action; }
+    /** The current action's kind ({@code PlayerStateFlags.ACTION_*}); meaningful while {@link #isAttacking()}. */
+    public int getActionKind() { return actionKind; }
     /** Starts a weapon swing if the previous one has finished; false while on cooldown. */
-    public boolean tryStartAttackSwing() { return c.attack.tryBeginSwing(getAttackSwingSeconds()); }
+    public boolean tryStartAttackSwing() {
+        boolean started = c.attack.tryBeginSwing(getAttackSwingSeconds());
+        if (started) actionKind = com.stonebreak.network.packet.player.PlayerStateFlags.ACTION_SWING;
+        return started;
+    }
     public float getAttackAnimationProgress() { return c.attack.getAnimationProgress(); }
     public float getRawAttackAnimationProgress() { return c.attack.getRawAnimationProgress(); }
+
+    /** The selected hotbar stack's item, or null when the hand is empty (#458: drawn on the grip socket). */
+    public com.stonebreak.items.Item getHeldItem() {
+        if (inventory == null) return null;
+        com.stonebreak.items.ItemStack held = inventory.getSelectedHotbarSlot();
+        return held == null || held.isEmpty() ? null : held.getItem();
+    }
+
+    /** The selected hotbar stack (null = none); its SBO state picks the held sprite's state. */
+    public com.stonebreak.items.ItemStack getHeldStack() {
+        if (inventory == null) return null;
+        com.stonebreak.items.ItemStack held = inventory.getSelectedHotbarSlot();
+        return held == null || held.isEmpty() ? null : held;
+    }
 
     // Bow draw
     public BowController getBowController() { return c.bow; }
@@ -387,7 +423,11 @@ public class Player {
         if (isPhysicallyInWater()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.PARTIALLY_IN_WATER;
         if (!isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.AIRBORNE;
         if (isOnGround()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND;
-        if (isAttacking()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;
+        if (isAttacking()) {
+            flags |= com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING;
+            flags |= com.stonebreak.network.packet.player.PlayerStateFlags.actionBits(actionKind);
+        }
+        if (isDrawingBow()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DRAWING_BOW;
         if (getStealth().isStealthed()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.STEALTHED;
         if (getDodge().isMakingNoise()) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.DODGE_NOISE;
         if (getBreakingBlock() != null) flags |= com.stonebreak.network.packet.player.PlayerStateFlags.MINING;

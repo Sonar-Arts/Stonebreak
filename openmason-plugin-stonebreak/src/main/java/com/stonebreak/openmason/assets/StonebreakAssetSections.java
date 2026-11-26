@@ -17,7 +17,8 @@ import java.util.List;
 
 /**
  * Stonebreak's game data in the SBO/SBE editor and export windows (#431). The tab order matches the
- * pre-#431 editor: Metadata, Game Properties, States, Neighbour Shapes, Recipes, Smelting, Sounds, Drops, Tool, Weapon.
+ * pre-#431 editor: Metadata, Game Properties, States, Neighbour Shapes, Recipes, Smelting, Sounds, Drops, Tool, Weapon
+ * (+ Held, #458).
  *
  * <p>The SBO sections read and write the {@code stonebreak:gameplay} extension ({@link SboGameplay},
  * #383); an older file's top-level fields are read through it and move into the extension on save.
@@ -46,6 +47,8 @@ public final class StonebreakAssetSections {
                         ToolSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo.weapon", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 800,
                         WeaponSection::new),
+                new AssetSectionContribution<>("stonebreak.sbo.held", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EDITOR, 850,
+                        HeldSection::new),
                 new AssetSectionContribution<>("stonebreak.sbo-export.game-properties", com.stonebreak.openmason.editor.StonebreakSurfaces.SBO_EXPORT,
                         100, ExportGamePropertiesSection::new),
                 new AssetSectionContribution<>("stonebreak.sbe.entity-type", com.stonebreak.openmason.editor.StonebreakSurfaces.SBE_EDITOR, 100,
@@ -270,6 +273,40 @@ public final class StonebreakAssetSections {
         @Override
         public SBOFormat.Document write(SBOFormat.Document doc) {
             return form.validate() == null ? SboGameplay.of(doc).withWeapon(form.toWeaponData()).applyTo(doc) : doc;
+        }
+    }
+
+    /** How the object sits in a hand (#458): an override of its held kind's default grip. */
+    static final class HeldSection implements AssetEditorSection<SBOFormat.Document> {
+        final SBOHeldSection form;
+
+        HeldSection(AssetSectionHost host) {
+            this.form = new SBOHeldSection(host::markDirty);
+        }
+
+        @Override
+        public String title() {
+            return "Held";
+        }
+
+        @Override
+        public void load(SBOFormat.Document doc) {
+            form.setFromHeldData(SboGameplay.of(doc).held());
+        }
+
+        @Override
+        public void render() {
+            form.render();
+        }
+
+        @Override
+        public String validate() {
+            return form.validate();
+        }
+
+        @Override
+        public SBOFormat.Document write(SBOFormat.Document doc) {
+            return form.validate() == null ? SboGameplay.of(doc).withHeld(form.toHeldData()).applyTo(doc) : doc;
         }
     }
 

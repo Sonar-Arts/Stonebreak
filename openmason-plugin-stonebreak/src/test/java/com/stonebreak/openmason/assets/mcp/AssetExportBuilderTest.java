@@ -194,6 +194,32 @@ class AssetExportBuilderTest {
         assertTrue(e.getMessage().contains("not embedded"));
     }
 
+    /** #458: the held grip exports, patches (null = back to the kind's default) and describes. */
+    @Test
+    void heldGripExportsPatchesAndDescribes() throws Exception {
+        SBOFormat.ExportParameters p = AssetExportBuilder.sbo(json("""
+                {"objectId":"stonebreak:t_bow","objectName":"T Bow","objectType":"item","author":"t",
+                 "gameProperties":{"numericId":9004},
+                 "held":{"socket":"grip_l","position":[0,0,-0.05],"rotation":[0,-90,0],"scale":0.6}}
+                """), omo, "x", this::resolve);
+        Path out = tmp.resolve("t_bow.sbo");
+        assertTrue(new SBOSerializer().export(p, omo, out.toString()));
+        SBOFormat.Document d = new SBOParser().parseRaw(out).manifest();
+        assertEquals(new SboGameplay.HeldData("grip_l", new SboGameplay.Vec3(0f, 0f, -0.05f),
+                new SboGameplay.Vec3(0f, -90f, 0f), 0.6f), SboGameplay.of(d).held());
+
+        SBOFormat.Document patched = AssetExportBuilder.patchSbo(d, json("{\"held\":{\"socket\":\"grip_r\"}}"));
+        assertEquals("grip_r", SboGameplay.of(patched).held().socket());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> held = (Map<String, Object>) AssetExportBuilder.describe(patched).get("held");
+        assertEquals("grip_r", held.get("socket"));
+        assertNull(AssetExportBuilder.describe(AssetExportBuilder.patchSbo(patched, json("{\"held\":null}")))
+                .get("held"), "\"held\": null = the kind's default grip");
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> AssetExportBuilder.patchSbo(d, json("{\"held\":{\"socket\":\"grip_r\",\"scale\":0}}")));
+        assertTrue(e.getMessage().startsWith("invalid_params"), e.getMessage());
+    }
+
     @Test
     void miningDataExportsPatchesAndDescribes() throws Exception {
         SBOFormat.ExportParameters p = AssetExportBuilder.sbo(json("""

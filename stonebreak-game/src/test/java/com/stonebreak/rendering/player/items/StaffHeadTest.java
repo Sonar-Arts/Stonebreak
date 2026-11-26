@@ -2,7 +2,11 @@ package com.stonebreak.rendering.player.items;
 
 import com.openmason.engine.rendering.sprite.VoxelData;
 import com.stonebreak.items.ItemType;
-import com.stonebreak.rendering.models.entities.HeldItemPose;
+import com.openmason.engine.cenda.CendaKernels;
+import com.stonebreak.mobs.entities.RemotePlayer;
+import com.stonebreak.network.packet.player.PlayerStateFlags;
+import com.stonebreak.rendering.models.entities.HeldItemFrames;
+import org.joml.Matrix4f;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
@@ -11,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** Fire bolts leave the staff's head — the curl at the top-right of its sprite — not its foot. */
 class StaffHeadTest {
@@ -32,17 +37,31 @@ class StaffHeadTest {
         assertTrue(head.y > minY + 0.75f * (maxY - minY), "head is at the staff's top: " + head);
     }
 
+    /** Third person (#458): the head is the staff's curl on the body's grip socket, high above the hand, turning with the body. */
     @Test
-    void thirdPersonHeadTurnsWithTheBody() {
-        Vector3f head = StaffHead.meshPoint();
-        Vector3d feet = new Vector3d(10f, 64f, -5f);
-        Vector3d facing0 = HeldItemPose.toolPointWorld(feet, 0f, head, new Vector3d()).sub(feet);
-        Vector3d facing90 = HeldItemPose.toolPointWorld(feet, 90f, head, new Vector3d()).sub(feet);
+    void thirdPersonHeadRidesTheGripAndTurnsWithTheBody() {
+        assumeTrue(CendaKernels.isAvailable(), "Cenda native kernels unavailable");
+        Vector3d a = headRelativeToFeet(0f);
+        Vector3d b = headRelativeToFeet(90f);
+        assertEquals(a.y, b.y, 1e-3, "height does not depend on facing");
+        assertEquals(Math.hypot(a.x, a.z), Math.hypot(b.x, b.z), 1e-3, "a turn moves the head around the feet");
+        assertTrue(a.y > 1.2, "an upright staff holds its head above the shoulders' height band: " + a);
+    }
 
-        assertEquals(facing0.y, facing90.y, 1e-4f, "height does not depend on facing");
-        // A quarter turn about +Y maps (x, z) to (z, -x).
-        assertEquals(facing0.z, facing90.x, 1e-4f);
-        assertEquals(-facing0.x, facing90.z, 1e-4f);
-        assertTrue(facing0.y > 1f, "the head is held above the waist: " + facing0);
+    private static Vector3d headRelativeToFeet(float yaw) {
+        RemotePlayer rp = new RemotePlayer(null, new Vector3d(10, 64, -5), 4, "remote");
+        try {
+            rp.applyNetworkState(10, 64, -5, yaw, 0f);
+            rp.setStateFlags((short) PlayerStateFlags.ON_GROUND);
+            rp.setHeldItem(ItemType.STAFF);
+            for (int i = 0; i < 120; i++) rp.updateClientVisuals(1 / 60f);
+            Matrix4f frame = HeldItemFrames.of(rp, new Matrix4f());
+            assertNotNull(frame, "the posed body holds the staff");
+            Vector3d world = HeldItemFrames.worldPoint(frame,
+                    HeldItemFrames.spritePoint(StaffHead.meshPoint(), new Vector3f()), new Vector3d());
+            return world.sub(rp.getPosition());
+        } finally {
+            rp.onRemovedFromWorld();
+        }
     }
 }

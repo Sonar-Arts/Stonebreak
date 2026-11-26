@@ -36,8 +36,31 @@ public final class PlayerStateFlags {
     public static final int LIFESTEAL = 1 << 10;
     /** Inside a dodge's noise window — the scuff mobs can hear (#321). */
     public static final int DODGE_NOISE = 1 << 11;
+    /** Drawing a bow (#458): the player graph's {@code bowDraw} input; others time the draw from its rise. */
+    public static final int DRAWING_BOW = 1 << 12;
+    /**
+     * The kind of the current {@link #ATTACKING} action (#458), two bits: {@link #ACTION_SWING} (left click),
+     * {@link #ACTION_USE} (right-click use: staff, rod, bucket...), {@link #ACTION_PLACE}, {@link #ACTION_EAT}. The
+     * player graph's {@code action} input.
+     */
+    public static final int ACTION_SHIFT = 13;
+    public static final int ACTION_MASK = 0b11 << ACTION_SHIFT;
+    public static final int ACTION_SWING = 0;
+    public static final int ACTION_USE = 1;
+    public static final int ACTION_PLACE = 2;
+    public static final int ACTION_EAT = 3;
 
     private PlayerStateFlags() {}
+
+    /** The action kind carried by {@code flags}. */
+    public static int action(short flags) {
+        return (flags & ACTION_MASK) >>> ACTION_SHIFT;
+    }
+
+    /** {@code action} packed into the action bits. */
+    public static int actionBits(int action) {
+        return (action << ACTION_SHIFT) & ACTION_MASK;
+    }
 
     public static boolean has(short flags, int bit) {
         return (flags & bit) != 0;

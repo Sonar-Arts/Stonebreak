@@ -277,6 +277,7 @@ public class Main {
                 maybeAutoResume();
                 maybeAutoFly();
                 maybeAutoChat();
+                maybeAutoFigure();
             }
         });
     }
@@ -1330,6 +1331,65 @@ public class Main {
      * {@code -Dstonebreak.autochat="5:/cheats 1;/spawn sheep 4;/spawn goblin 3|60:/goblins"}.
      * Inert unless set.
      */
+    private com.stonebreak.mobs.entities.RemotePlayer autoFigure;
+    private long autoFigureStartNanos = -1;
+
+    /**
+     * {@code -Dstonebreak.autofigure=<item objectId>[@<seconds>[@<yaw offset degrees>]]} (#458 shots): after {@code seconds} (default 4)
+     * in a world, places a client-only player figure 2.4 blocks ahead of the camera and to the left (floating, hands at eye level), facing it, holding the item on its
+     * grip socket and swinging every 2.5 s (the remote-player held-item path seen from the front); the local player
+     * selects the same item once it is in its hotbar. Inert
+     * unless set.
+     */
+    private void maybeAutoFigure() {
+        String spec = System.getProperty("stonebreak.autofigure");
+        if (spec == null || spec.isBlank() || Game.getInstance().getState() != GameState.PLAYING) return;
+        var player = Game.getPlayer();
+        var world = Game.getWorld();
+        if (player == null || world == null || Game.getEntityManager() == null) return;
+        String[] p = spec.split("@");
+        if (autoFigureStartNanos < 0) autoFigureStartNanos = System.nanoTime();
+        double t = (System.nanoTime() - autoFigureStartNanos) / 1e9;
+        double delay = p.length > 1 ? Double.parseDouble(p[1]) : 4.0;
+        if (t < delay) return;
+        String objectId = p[0].trim();
+        if (autoFigure == null) {
+            com.stonebreak.items.Item item = com.stonebreak.items.ItemType.getByObjectId(objectId);
+            if (item == null) item = com.stonebreak.blocks.BlockType.getByObjectId(objectId);
+            org.joml.Vector3f front = player.getCamera().getFront();
+            org.joml.Vector3d cam = player.getCamera().getPosition();
+            double fx = front.x, fz = front.z, len = Math.max(1e-6, Math.hypot(fx, fz));
+            fx /= len;
+            fz /= len;
+            // 2.4 ahead of the camera, 0.7 to the left of the view axis, floating so its hands are just below the
+            // camera's eye line: a clear, straight-on view of the held object whatever the terrain.
+            org.joml.Vector3d at = new org.joml.Vector3d(cam.x + fx * 2.4 + fz * 0.7,
+                    cam.y - com.stonebreak.player.PlayerCharacter.get().hipHeight() - 0.25,
+                    cam.z + fz * 2.4 - fx * 0.7);
+            float yaw = player.getCamera().getYaw() + 180f + (p.length > 2 ? Float.parseFloat(p[2]) : 0f);
+            autoFigure = new com.stonebreak.mobs.entities.RemotePlayer(world, at, -458, "figure");
+            autoFigure.setNetworkShadow(true);
+            com.stonebreak.network.client.NetworkInterpolator interp =
+                    new com.stonebreak.network.client.NetworkInterpolator();
+            interp.seed(at.x, at.y, at.z, yaw, 0f);
+            autoFigure.setInterpolator(interp);
+            autoFigure.setHeldItem(item);
+            Game.getEntityManager().addEntity(autoFigure);
+            System.out.println("[autofigure] " + objectId + " -> " + item + " at " + at);
+        }
+        // The local player holds the same item once it is in the hotbar (e.g. after /obtain).
+        com.stonebreak.items.ItemStack[] hotbar = player.getInventory().getHotbarSlots();
+        for (int i = 0; i < hotbar.length; i++) {
+            if (hotbar[i] != null && !hotbar[i].isEmpty() && hotbar[i].getItem() == autoFigure.getHeldItem()) {
+                player.getInventory().setSelectedHotbarSlotIndex(i);
+                break;
+            }
+        }
+        boolean swing = (t - delay) % 2.5 > 1.5 && (t - delay) % 2.5 < 1.85;
+        autoFigure.setStateFlags((short) (com.stonebreak.network.packet.player.PlayerStateFlags.ON_GROUND
+                | (swing ? com.stonebreak.network.packet.player.PlayerStateFlags.ATTACKING : 0)));
+    }
+
     private void maybeAutoChat() {
         if (autoChatGroups == null) {
             String spec = System.getProperty("stonebreak.autochat");

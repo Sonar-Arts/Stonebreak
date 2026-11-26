@@ -971,6 +971,31 @@ public class WorldRenderer {
     }
 
     /**
+     * The held objects drawn on grip sockets this frame (#458): other players' and decoys', and the local player's in
+     * third person (in first person its hand is the first-person arm until #462).
+     */
+    private static java.util.List<DropRenderer.HeldDraw> heldDraws(Player player,
+            java.util.List<com.stonebreak.mobs.entities.RemotePlayer> remotePlayers) {
+        java.util.List<DropRenderer.HeldDraw> draws = new java.util.ArrayList<>();
+        for (com.stonebreak.mobs.entities.RemotePlayer rp : remotePlayers) {
+            org.joml.Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(rp,
+                    new org.joml.Matrix4f());
+            if (frame != null) draws.add(new DropRenderer.HeldDraw(rp.getHeldItem(), rp.heldItemState(), frame));
+        }
+        if (player != null && player.isThirdPerson() && !player.isDead()) {
+            org.joml.Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(player,
+                    new org.joml.Matrix4f());
+            if (frame != null) {
+                com.stonebreak.items.ItemStack stack = player.getHeldStack();
+                String state = player.getHeldItem() == com.stonebreak.items.ItemType.BOW
+                        ? player.getBowSboState() : stack != null ? stack.getState() : null;
+                draws.add(new DropRenderer.HeldDraw(player.getHeldItem(), state, frame));
+            }
+        }
+        return draws;
+    }
+
+    /**
      * Render opaque block/item drops before the transparent water pass.
      * Writing depth here allows water to occlude drops behind it.
      */
@@ -988,8 +1013,9 @@ public class WorldRenderer {
         if (!drops.isEmpty()) {
             dropRenderer.renderOpaqueDrops(drops, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
         }
-        if (!remotePlayers.isEmpty()) {
-            dropRenderer.renderHeldItems(remotePlayers, shaderProgram, projectionMatrix, player.getViewMatrix(), world, cameraPos);
+        java.util.List<DropRenderer.HeldDraw> held = heldDraws(player, remotePlayers);
+        if (!held.isEmpty()) {
+            dropRenderer.renderHeldItems(held, shaderProgram, projectionMatrix, player.getViewMatrix(), cameraPos);
         }
         if (entityRenderer != null) {
             entityRenderer.queueMeatRackItems(world, cameraPos);
@@ -1055,7 +1081,8 @@ public class WorldRenderer {
         // stays physically attached to the rod.
         com.stonebreak.mobs.entities.FishingBobber bobber = player.getActiveBobber();
         if (bobber != null && bobber.isAlive()) {
-            org.joml.Vector3f rodTip = playerArmRenderer.getHeldRodTipWorld(player);
+            org.joml.Vector3f rodTip = player.isThirdPerson()
+                    ? thirdPersonRodTip(player) : playerArmRenderer.getHeldRodTipWorld(player);
             if (rodTip != null) {
                 org.joml.Vector3f bobberTop = new org.joml.Vector3f(bobber.getPosition())
                         .add(0, 0.1f + bobber.getBobOffset(), 0);
@@ -1064,6 +1091,18 @@ public class WorldRenderer {
         }
     }
     
+    /** The tip of the rod on the body's grip socket (#458), or null before the body is posed. */
+    private static org.joml.Vector3f thirdPersonRodTip(Player player) {
+        org.joml.Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(player,
+                new org.joml.Matrix4f());
+        org.joml.Vector3f tip = com.stonebreak.rendering.models.entities.HeldItemFrames.spriteTip(
+                com.stonebreak.items.ItemType.FISHING_ROD);
+        if (frame == null || tip == null) return null;
+        org.joml.Vector3d world = com.stonebreak.rendering.models.entities.HeldItemFrames.worldPoint(frame, tip,
+                new org.joml.Vector3d());
+        return new org.joml.Vector3f((float) world.x, (float) world.y, (float) world.z);
+    }
+
     private static int debugRenderWorldCount = 0;
 
     /**
