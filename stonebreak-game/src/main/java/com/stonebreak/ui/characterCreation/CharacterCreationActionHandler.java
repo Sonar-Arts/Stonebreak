@@ -20,6 +20,9 @@ public final class CharacterCreationActionHandler {
     }
 
     public void goBackToWorldSelect() {
+        if (finishAppearance()) {
+            return;
+        }
         if (isJoinMode()) {
             // In join mode: disconnect and return to main menu (the one way out, #368)
             state.reset();
@@ -31,12 +34,27 @@ public final class CharacterCreationActionHandler {
     }
 
     public void goToTerrainMapper() {
+        if (finishAppearance()) {
+            return;
+        }
         if (isJoinMode()) {
             // In join mode: submit character creation to server and enter world
             submitCharacterCreation();
         } else {
             Game.getInstance().setState(GameState.TERRAIN_MAPPER);
         }
+    }
+
+    /** Appearance-only mode (#459): Back / Done return to the game (choices were sent as they were made). */
+    private boolean finishAppearance() {
+        GameState back = state.exitAppearance();
+        if (back == null) {
+            return false;
+        }
+        Game game = Game.getInstance();
+        game.setState(back);
+        if (game.getPauseMenu() != null) game.getPauseMenu().setVisible(false);
+        return true;
     }
 
     /** True when the character creation screen was triggered by a JOIN session. */

@@ -61,7 +61,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class CharacterCreationContracts {
 
-    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 5);
+    public static final HostContract CREATION = HostContract.of("stonebreak:screen.character-creation", 6);
 
     private static final String[] ABBREV = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
     /** The Talents sub-tab bar (MTabBar, labels unscaled): inset, height, the gap above the pane under it. */
@@ -86,7 +86,7 @@ public final class CharacterCreationContracts {
         "tabs", DataType.list(DataType.object("tab", DataType.string(), "label", DataType.string(),
             "x", DataType.number(), "width", DataType.number(), "fontSize", DataType.number(),
             "baseline", DataType.number(), "active", DataType.bool()), "tab"),
-        "backLabel", DataType.string(), "nextLabel", DataType.string(),
+        "backLabel", DataType.string(), "nextLabel", DataType.string(), "appearanceOnly", DataType.bool(),
         "classLabel", DataType.string(), "backgroundLabel", DataType.string(),
         "ap", DataType.string(), "cp", DataType.string(), "sp", DataType.string(), "fp", DataType.string(),
         "className", DataType.string(), "classDesc", DataType.string(), "noClass", DataType.bool(),
@@ -144,10 +144,15 @@ public final class CharacterCreationContracts {
         list(ui, "ccFeats", FEATS);
         list(ui, "ccHair", COSMETICS);
         list(ui, "ccHats", COSMETICS);
+        list(ui, "ccAccessories", COSMETICS);
         DataType.Obj id = DataType.object("id", DataType.string());
         action(ui, "tab", DataType.object("tab", DataType.string()), (c, a) -> {
             try {
-                c.state().setActiveTab(CharacterCreationTab.valueOf(str(a, "tab")));
+                CharacterCreationTab tab = CharacterCreationTab.valueOf(str(a, "tab"));
+                if (c.state().isAppearanceOnly() && tab != CharacterCreationTab.LOOKS) {
+                    return "only the Looks tab while changing the look";
+                }
+                c.state().setActiveTab(tab);
                 return null;
             } catch (IllegalArgumentException e) {
                 return "no such tab";
@@ -251,6 +256,12 @@ public final class CharacterCreationContracts {
             }
             return null;
         });
+        action(ui, "accessory", id, (c, a) -> {
+            if (!str(a, "id").equalsIgnoreCase(PlayerLooks.getSelectedAccessoryId())) {
+                c.actions().onSelectAccessory(str(a, "id"));
+            }
+            return null;
+        });
         action(ui, "wheel", DataType.object("dy", DataType.number()), (c, a) -> {
             c.mouse().handleMouseWheel(0, 0, num(a, "dy"));
             return null;
@@ -286,6 +297,7 @@ public final class CharacterCreationContracts {
         publish("ccFeats", feats(stats));
         publish("ccHair", cosmetics(PlayerLooks.HAIR_OPTIONS, PlayerLooks.getSelectedHairId()));
         publish("ccHats", cosmetics(PlayerLooks.HAT_OPTIONS, PlayerLooks.getSelectedHatId()));
+        publish("ccAccessories", cosmetics(PlayerLooks.ACCESSORY_OPTIONS, PlayerLooks.getSelectedAccessoryId()));
     }
 
     static UiValue state(CharacterCreationScreen c, int w, int h) {
@@ -326,7 +338,9 @@ public final class CharacterCreationContracts {
         List<UiValue> tabs = new ArrayList<>();
         TabMetric[] metrics = c == null ? null : c.tabMetrics(w, h);
         CharacterCreationTab[] all = CharacterCreationTab.values();
+        boolean lookOnly = st != null && st.isAppearanceOnly();
         for (int i = 0; i < all.length; i++) {
+            if (lookOnly && all[i] != CharacterCreationTab.LOOKS) continue; // #459: changing the look in a world
             Map<String, UiValue> t = new LinkedHashMap<>();
             t.put("tab", UiValue.of(all[i].name()));
             t.put("label", UiValue.of(all[i].displayName()));
@@ -354,6 +368,7 @@ public final class CharacterCreationContracts {
         m.put("undoDisabled", UiValue.of(!stats.canUndo()));
         m.put("backLabel", UiValue.of(st == null ? "World Select" : st.getBackToWorldSelectButton().text()));
         m.put("nextLabel", UiValue.of(st == null ? "Terrain Mapper" : st.getTerrainMapperButton().text()));
+        m.put("appearanceOnly", UiValue.of(st != null && st.isAppearanceOnly()));
 
         m.put("classLabel", UiValue.of("Class: " + stats.getCharacterClass()));
         String bgId = stats.getSelectedBackground();

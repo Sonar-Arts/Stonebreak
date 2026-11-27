@@ -33,7 +33,7 @@ import java.util.Map;
  */
 public final class DocumentPauseCapture implements MigrationGate.Renderer {
 
-    public static final List<String> BUTTONS = List.of("resume", "statistics", "glossary", "settings", "resync", "quit");
+    public static final List<String> BUTTONS = List.of("resume", "statistics", "glossary", "appearance", "settings", "resync", "quit");
 
     private final SbuiArchive shipped;
 

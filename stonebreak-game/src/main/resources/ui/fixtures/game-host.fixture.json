@@ -46,6 +46,7 @@
     "ccFeats": "stonebreak:screen.character-creation",
     "ccHair": "stonebreak:screen.character-creation",
     "ccHats": "stonebreak:screen.character-creation",
+    "ccAccessories": "stonebreak:screen.character-creation",
     "characterSheet": "stonebreak:screen.character-sheet",
     "battleHud": "stonebreak:battle"
   },
@@ -1220,6 +1221,7 @@
       "undoDisabled": true,
       "backLabel": "World Select",
       "nextLabel": "Terrain Mapper",
+      "appearanceOnly": false,
       "classLabel": "Class: Adventurer",
       "backgroundLabel": "Background: Adventurer",
       "ap": "AP Remaining: 5",
@@ -2543,6 +2545,23 @@
           "rule": false
         }
       ]
+    },
+    "ccAccessories": {
+      "identity": "id",
+      "items": [
+        {
+          "id": "NONE",
+          "name": "No Accessory",
+          "equipped": true,
+          "rule": true
+        },
+        {
+          "id": "GOLD_EARRING",
+          "name": "Gold Earring",
+          "equipped": false,
+          "rule": false
+        }
+      ]
     }
   },
   "actions": {
@@ -2556,6 +2575,9 @@
       "contract": "stonebreak:screen.pause"
     },
     "stonebreak:screen.pause.settings": {
+      "contract": "stonebreak:screen.pause"
+    },
+    "stonebreak:screen.pause.appearance": {
       "contract": "stonebreak:screen.pause"
     },
     "stonebreak:screen.pause.quit": {
@@ -3044,6 +3066,12 @@
       }
     },
     "stonebreak:screen.character-creation.hat": {
+      "contract": "stonebreak:screen.character-creation",
+      "params": {
+        "id": "string"
+      }
+    },
+    "stonebreak:screen.character-creation.accessory": {
       "contract": "stonebreak:screen.character-creation",
       "params": {
         "id": "string"

@@ -39,7 +39,10 @@ public final class CharacterCreationScreen {
 
     /** Update navigation button labels for JOIN mode. */
     public void updateLabelsForMode() {
-        if (MultiplayerSession.isInMode(MultiplayerSession.Mode.JOIN)) {
+        if (state.isAppearanceOnly()) {
+            state.getBackToWorldSelectButton().text("Back");
+            state.getTerrainMapperButton().text("Done");
+        } else if (MultiplayerSession.isInMode(MultiplayerSession.Mode.JOIN)) {
             state.getBackToWorldSelectButton().text("Main Menu");
             state.getTerrainMapperButton().text("Enter World");
         } else {
@@ -50,6 +53,16 @@ public final class CharacterCreationScreen {
 
     public void reset() {
         state.reset();
+    }
+
+    /**
+     * Opens the screen from a world to change the player's look (#459): the Looks tab only; every choice goes to the
+     * server at once ({@code PlayerLooks}); Back and Done return to the game.
+     */
+    public void openAppearance() {
+        state.enterAppearance(com.stonebreak.core.GameState.PLAYING);
+        com.stonebreak.player.PlayerLooks.applyCurrentToPreview();
+        com.stonebreak.core.Game.getInstance().setState(com.stonebreak.core.GameState.CHARACTER_CREATION);
     }
 
     public CharacterStats getCharacterStats() {

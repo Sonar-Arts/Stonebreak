@@ -161,6 +161,11 @@ public final class PlayerLooks {
         if (sink != null) sink.accept(look);
     }
 
+    /** Shows the look the Looks tab edits ({@link #current()}) on the preview body. */
+    public static void applyCurrentToPreview() {
+        AppearanceMounts.apply(current(), PREVIEW);
+    }
+
     /** Shows the preferred look on the preview body (startup, after the look changed elsewhere). */
     public static void applySelectedAppearance() {
         AppearanceMounts.apply(preferred(), PREVIEW);

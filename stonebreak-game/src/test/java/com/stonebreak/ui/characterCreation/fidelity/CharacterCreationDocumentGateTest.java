@@ -25,4 +25,17 @@ class CharacterCreationDocumentGateTest {
                 DocumentCharacterCreationCapture.shipped());
         GateAssert.passed(r);
     }
+
+    /**
+     * Opt-in ({@code -Dstonebreak.ui.creation.refreeze=true}): re-records every baseline and the geometry from the
+     * shipped document. Only for a reviewed, intended change of the screen's look (#459: the Accessories list).
+     */
+    @Test
+    void refreezeTheBaselines() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("stonebreak.ui.creation.refreeze"),
+            "opt-in re-freeze");
+        ChatDocumentGateTest.requireLua();
+        FrozenCaptures.forTests("character-creation").record(CharacterCreationFixtures.cases(),
+            DocumentCharacterCreationCapture.shipped());
+    }
 }

@@ -102,6 +102,27 @@ public final class CharacterCreationStateManager {
     public float getMouseY() { return mouseY; }
     public void setMousePosition(float x, float y) { this.mouseX = x; this.mouseY = y; }
 
+    /**
+     * Appearance-only mode (#459): the screen was opened from a world to change the player's look - only the Looks
+     * tab, and Back / Done return to the game. Null = normal character creation.
+     */
+    private com.stonebreak.core.GameState appearanceReturn;
+
+    public boolean isAppearanceOnly() { return appearanceReturn != null; }
+
+    /** Enters appearance-only mode; {@code returnTo} is where Back / Done go. */
+    public void enterAppearance(com.stonebreak.core.GameState returnTo) {
+        this.appearanceReturn = returnTo;
+        this.activeTab = CharacterCreationTab.LOOKS;
+    }
+
+    /** Leaves appearance-only mode; where to go back to (null when not in it). */
+    public com.stonebreak.core.GameState exitAppearance() {
+        com.stonebreak.core.GameState r = appearanceReturn;
+        appearanceReturn = null;
+        return r;
+    }
+
     /** Discards all progress and resets to the default blank-character state. */
     public void reset() {
         this.characterStats    = new CharacterStats(null);

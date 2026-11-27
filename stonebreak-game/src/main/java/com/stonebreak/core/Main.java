@@ -1338,7 +1338,9 @@ public class Main {
      * {@code -Dstonebreak.autofigure=<item objectId>[@<seconds>[@<yaw offset degrees>]]} (#458 shots): after {@code seconds} (default 4)
      * in a world, places a client-only player figure 2.4 blocks ahead of the camera and to the left (floating, hands at eye level), facing it, holding the item on its
      * grip socket and swinging every 2.5 s (the remote-player held-item path seen from the front); the local player
-     * selects the same item once it is in its hotbar. Inert
+     * selects the same item once it is in its hotbar. {@code -Dstonebreak.autofigure.look=hat:TOP_HAT,hair:MALE_HAIR_1,...}
+     * gives the figure a look (#459, through the known looks like a real remote player) and
+     * {@code -Dstonebreak.autofigure.decoy=true} puts its decoy beside it (decoys wear their caster's look). Inert
      * unless set.
      */
     private void maybeAutoFigure() {
@@ -1376,6 +1378,28 @@ public class Main {
             autoFigure.setHeldItem(item);
             Game.getEntityManager().addEntity(autoFigure);
             System.out.println("[autofigure] " + objectId + " -> " + item + " at " + at);
+            // #459 shots: the figure's look through the real remote path (the known looks), and a decoy of it.
+            String lookSpec = System.getProperty("stonebreak.autofigure.look");
+            if (lookSpec != null && !lookSpec.isBlank()) {
+                var look = com.stonebreak.player.appearance.PlayerAppearance.defaults();
+                for (String part : lookSpec.split(",")) {
+                    String[] kv = part.split(":", 2);
+                    if (kv.length == 2) look = look.withItem(kv[0].trim(), kv[1].trim());
+                }
+                com.stonebreak.player.appearance.KnownLooks.put(-458, look);
+            }
+            if (Boolean.getBoolean("stonebreak.autofigure.decoy")) {
+                org.joml.Vector3d side = new org.joml.Vector3d(at.x - fz * 1.6, at.y, at.z + fx * 1.6);
+                var decoy = new com.stonebreak.mobs.entities.IllusionDecoy(world, side, null, 120f);
+                decoy.setOwnerPlayerId(-458);
+                decoy.setNetworkShadow(true);
+                com.stonebreak.network.client.NetworkInterpolator di = new com.stonebreak.network.client.NetworkInterpolator();
+                di.seed(side.x, side.y, side.z, yaw, 0f);
+                decoy.setInterpolator(di);
+                decoy.setHeldItem(item);
+                Game.getEntityManager().addEntity(decoy);
+                System.out.println("[autofigure] decoy of the figure at " + side);
+            }
         }
         // The local player holds the same item once it is in the hotbar (e.g. after /obtain).
         com.stonebreak.items.ItemStack[] hotbar = player.getInventory().getHotbarSlots();

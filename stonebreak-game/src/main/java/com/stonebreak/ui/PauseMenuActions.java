@@ -56,6 +56,14 @@ public final class PauseMenuActions {
         return audited;
     }
 
+    /** The Looks tab of the character screen, to change the player's look in the world (#459). */
+    public static void openAppearance(Game game) {
+        com.stonebreak.ui.characterCreation.CharacterCreationScreen screen = game.getCharacterCreationScreen();
+        if (screen == null) return;
+        game.getPauseMenu().setVisible(false);
+        screen.openAppearance();
+    }
+
     /** Cleans up world state and returns to the main menu. */
     public static void quitToMenu(Game game) {
         game.leaveWorldToMenu();

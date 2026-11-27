@@ -133,6 +133,7 @@ public final class DocumentCharacterCreationCapture implements MigrationGate.Ren
             case "acquire" -> shown(doc.qAll(".acquire"), i);
             case "equip" -> doc.qAll(".hair .equip").get(i);
             case "hat" -> doc.qAll(".hats .equip").get(i);
+            case "acc" -> doc.qAll(".accessories .equip").get(i);
             default -> throw new IllegalArgumentException(name);
         };
     }

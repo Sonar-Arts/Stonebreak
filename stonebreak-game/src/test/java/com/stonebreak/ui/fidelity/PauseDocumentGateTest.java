@@ -134,4 +134,15 @@ class PauseDocumentGateTest {
                 stage.key(com.openmason.engine.ui.masonry.MKeys.KEY_ENTER), "Tab focuses Resume, Enter presses it (#299)");
         }
     }
+
+    /**
+     * Opt-in ({@code -Dstonebreak.ui.pause.refreeze=true}): re-records every baseline and the geometry from the shipped
+     * document. Only for a reviewed, intended change of the menu's look (#459: the Appearance button).
+     */
+    @Test
+    void refreezeTheBaselines() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("stonebreak.ui.pause.refreeze"), "opt-in re-freeze");
+        requireLua();
+        FrozenCaptures.forTests("pause").record(cases(), DocumentPauseCapture.shipped());
+    }
 }

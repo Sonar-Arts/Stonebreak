@@ -265,6 +265,56 @@ class CharacterCreationDocumentInteractionTest {
     }
 
     /**
+     * #459: the Looks tab's accessory list equips accessories; opened from a world the screen is in appearance-only
+     * mode - only the Looks tab is published (others are refused), the footer reads Back / Done, and Escape runs Back
+     * at once (nothing is lost: every choice was already sent).
+     */
+    @Test
+    void accessoriesAndTheAppearanceOnlyMode() throws Exception {
+        String[] accessory = {"NONE"};
+        List<String> equipped = new ArrayList<>();
+        try (MockedStatic<PlayerLooks> looks = Mockito.mockStatic(PlayerLooks.class, Mockito.CALLS_REAL_METHODS);
+             UiRaster fonts = new UiRaster(1920, 1080, 1f)) {
+            looks.when(PlayerLooks::getSelectedAccessoryId).thenAnswer(i -> accessory[0]);
+            looks.when(() -> PlayerLooks.selectAccessory(anyString())).thenAnswer(i -> {
+                accessory[0] = i.getArgument(0);
+                equipped.add(accessory[0]);
+                return null;
+            });
+            CharacterCreationScreen screen = new CharacterCreationScreen(fonts.backend());
+            int[] backs = {0};
+            screen.state().getBackToWorldSelectButton().onClick(() -> backs[0]++);
+            screen.state().enterAppearance(com.stonebreak.core.GameState.PLAYING);
+            try (DocumentStage stage = DocumentCharacterCreationCapture.stage(shipped, screen, 1920, 1080, 1f)) {
+                assertEquals(CharacterCreationTab.LOOKS, screen.state().getActiveTab());
+                assertEquals(1, stage.view.instance().qAll(".cc-tab").size(), "only the Looks tab");
+                assertEquals("Back", screen.state().getBackToWorldSelectButton().text());
+                assertEquals("Done", screen.state().getTerrainMapperButton().text());
+
+                // rows: No Accessory (equipped), Gold Earring
+                assertTrue(DocumentCharacterCreationCapture.element(stage, "acc0").isCollapsed());
+                click(stage, "acc1");
+                assertEquals(List.of("GOLD_EARRING"), equipped, "the accessory list equips accessories");
+
+                UiScope scope = stage.host.host().openScope("stonebreak:ui/screens/test", null, p -> { });
+                CallSite site = scope.site("t", CallSite.Origin.SCRIPT);
+                ActionCall refused = scope.invoke("stonebreak:screen.character-creation.tab",
+                    new UiValue.Obj(Map.of("tab", UiValue.of("BACKGROUND"))), site);
+                assertEquals(ActionCall.State.FAILED, refused.state(), "no other tab while changing the look");
+                assertEquals(CharacterCreationTab.LOOKS, screen.state().getActiveTab());
+
+                stage.key(GLFW_KEY_ESCAPE);
+                stage.host.characterCreation().poll();
+                stage.settle();
+                assertTrue(stage.q("#cc-confirm").isCollapsed(), "no 'leave?' question");
+                assertEquals(1, backs[0], "Escape runs Back at once");
+            } finally {
+                screen.dispose();
+            }
+        }
+    }
+
+    /**
      * Escape asks before leaving (#302): it opens the confirmation (Escape again, Stay or a press on the scrim
      * close it), Leave or Enter runs the footer's Back, and nothing under the dialog takes a press while it is up.
      * Tab is swallowed by the document (no focus walking, never reaches the game).

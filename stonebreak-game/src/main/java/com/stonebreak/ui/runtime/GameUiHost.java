@@ -117,8 +117,9 @@ import java.util.function.Consumer;
  *   <tr><td>{@code stonebreak:settings} 2</td><td>editable root {@code settings} with every player
  *       setting ({@link SettingsContract}), applied by {@code stonebreak:settings.apply}; since 2
  *       {@code .set-live}, {@code .keep-ui-scale}, {@code .revert-ui-scale}</td></tr>
- *   <tr><td>{@code stonebreak:screen.pause} 1</td><td>{@code stonebreak:screen.pause.resume},
- *       {@code .statistics}, {@code .glossary}, {@code .settings}, {@code .quit}</td></tr>
+ *   <tr><td>{@code stonebreak:screen.pause} 2</td><td>{@code stonebreak:screen.pause.resume},
+ *       {@code .statistics}, {@code .glossary}, {@code .settings}, {@code .quit}; since 2 {@code .appearance}
+ *       (#459: the Looks tab, to change the look in a world)</td></tr>
  *   <tr><td>{@code stonebreak:player.stats} 1</td><td>root {@code stats}: the local player's activity
  *       statistics ({@link StatsRecord}) and each written as the statistics screen writes it ({@code text})</td></tr>
  *   <tr><td>{@code stonebreak:screen.statistics} 1</td><td>{@code stonebreak:screen.statistics.back}</td></tr>
@@ -157,7 +158,7 @@ public final class GameUiHost {
     public static final HostContract SESSION = HostContract.of("stonebreak:session", 1);
     public static final HostContract FURNACE = HostContract.of("stonebreak:furnace", 3);
     public static final HostContract SETTINGS = HostContract.of("stonebreak:settings", 2);
-    public static final HostContract PAUSE = HostContract.of("stonebreak:screen.pause", 1);
+    public static final HostContract PAUSE = HostContract.of("stonebreak:screen.pause", 2);
     public static final HostContract STATS = HostContract.of("stonebreak:player.stats", 1);
     public static final HostContract STATISTICS = HostContract.of("stonebreak:screen.statistics", 1);
     public static final HostContract LOADING = HostContract.of("stonebreak:screen.loading", 2);
@@ -233,6 +234,10 @@ public final class GameUiHost {
         void openGlossary();
 
         void openSettings();
+
+        /** The Looks tab of the character screen, to change the player's look (#459; pause contract 2). */
+        default void openAppearance() {
+        }
 
         void quitToMenu();
 
@@ -751,6 +756,7 @@ public final class GameUiHost {
         pause("statistics", services::openStatistics);
         pause("glossary", services::openGlossary);
         pause("settings", services::openSettings);
+        pause("appearance", services::openAppearance);
         pause("quit", services::quitToMenu);
         screenAction(DEATH, "respawn", services::respawn);
         for (String choice : new String[] {"yes", "no", "cancel"}) {
@@ -970,6 +976,13 @@ public final class GameUiHost {
         public void openSettings() {
             if (inWorld("settings")) {
                 PauseMenuActions.openSettings(Game.getInstance());
+            }
+        }
+
+        @Override
+        public void openAppearance() {
+            if (inWorld("appearance")) {
+                PauseMenuActions.openAppearance(Game.getInstance());
             }
         }
 
