@@ -6,7 +6,8 @@ import com.stonebreak.mobs.entities.Entity;
 import com.stonebreak.mobs.entities.EntityManager;
 import com.stonebreak.mobs.entities.EntityType;
 import com.stonebreak.mobs.entities.LivingEntity;
-import com.stonebreak.mobs.sbe.EntityAttachments;
+import com.stonebreak.mobs.sbe.BodyMounts;
+import com.stonebreak.mobs.sbe.HostSockets;
 import com.openmason.engine.entity.model.EntityAttachmentPoint;
 import com.openmason.engine.entity.model.EntityAsset;
 import com.openmason.engine.entity.model.EntityModelLoader;
@@ -59,7 +60,7 @@ public class AttachCommand implements ChatCommand {
         }
 
         if (args[0].equalsIgnoreCase("clear")) {
-            boolean removed = EntityAttachments.detach(target.key(), null);
+            boolean removed = target.mounts().clear();
             messageManager.addMessage(removed
                     ? "Cleared attachments on " + target.label()
                     : "No attachments on " + target.label(),
@@ -87,13 +88,16 @@ public class AttachCommand implements ChatCommand {
             return;
         }
 
-        if (findSocket(target.asset(), socketName) == null) {
+        com.openmason.engine.rig.SocketSet hostSockets = HostSockets.of(target.asset(), EntityAsset.DEFAULT_VARIANT);
+        if (hostSockets == null || hostSockets.find(socketName) < 0) {
             messageManager.addMessage("Unknown socket '" + socketName + "' on " + target.label()
                     + " — /attach lists sockets", ChatColors.RED);
             return;
         }
 
-        EntityAttachments.attach(target.key(), socketName, accessory);
+        target.mounts().put(new BodyMounts.Mount(socketName, socketName,
+                new com.stonebreak.mobs.sbe.AttachmentVisual.Model(accessory), null,
+                com.stonebreak.mobs.sbe.Clothing.mountPoint(accessory, EntityAsset.DEFAULT_VARIANT), null));
         messageManager.addMessage("Attached " + assetPath + " to '" + socketName + "' on "
                 + target.label(), ChatColors.GREEN);
     }
@@ -116,8 +120,8 @@ public class AttachCommand implements ChatCommand {
                 + ") or on the classpath (" + resource + ")");
     }
 
-    /** The attachment key, the host asset (for socket lookup), and a chat label. */
-    private record Target(Object key, EntityAsset asset, String label) {}
+    /** The body's mounts, the host asset (for socket lookup), and a chat label. */
+    private record Target(BodyMounts mounts, EntityAsset asset, String label) {}
 
     private Target resolveTarget(String targetArg, ChatMessageManager messageManager) {
         if (targetArg.equals("mob")) {
@@ -128,7 +132,7 @@ public class AttachCommand implements ChatCommand {
                 return null;
             }
             EntityAsset asset = SbeEntityRegistry.get(mob.getType().getSbeObjectId());
-            return new Target(mob, asset, mob.getType().name().toLowerCase());
+            return new Target(mob.mounts(), asset, mob.getType().name().toLowerCase());
         }
         EntityAsset asset = SbeEntityRegistry.get(
                 com.stonebreak.player.PlayerCharacter.ASSET_ID);
@@ -136,7 +140,12 @@ public class AttachCommand implements ChatCommand {
             messageManager.addMessage("Player model not loaded", ChatColors.RED);
             return null;
         }
-        return new Target(EntityAttachments.LOCAL_PLAYER, asset, "you");
+        Player self = Game.getPlayer();
+        if (self == null) {
+            messageManager.addMessage("No player", ChatColors.RED);
+            return null;
+        }
+        return new Target(self.mounts(), asset, "you");
     }
 
     private LivingEntity nearestSbeMob() {
@@ -163,33 +172,19 @@ public class AttachCommand implements ChatCommand {
     }
 
     private void listSockets(Target target, ChatMessageManager messageManager) {
-        EntityGeometry geometry = target.asset() == null ? null
-                : target.asset().geometryFor(EntityAsset.DEFAULT_VARIANT);
-        List<EntityAttachmentPoint> sockets = geometry == null ? List.of()
-                : geometry.attachmentPoints();
-        if (sockets.isEmpty()) {
+        com.openmason.engine.rig.SocketSet sockets = HostSockets.of(target.asset(), EntityAsset.DEFAULT_VARIANT);
+        int count = sockets == null ? 0 : sockets.count();
+        if (count == 0) {
             messageManager.addMessage("No sockets on " + target.label()
                     + " (author them in Open Mason)", ChatColors.YELLOW);
             return;
         }
         StringBuilder names = new StringBuilder();
-        for (EntityAttachmentPoint socket : sockets) {
+        for (int i = 0; i < count; i++) {
             if (!names.isEmpty()) names.append(", ");
-            names.append(socket.name());
+            names.append(sockets.info(i).name());
         }
         messageManager.addMessage("Sockets on " + target.label() + ": " + names, ChatColors.GREEN);
-    }
-
-    private static EntityAttachmentPoint findSocket(EntityAsset asset, String socketName) {
-        EntityGeometry geometry = asset == null ? null
-                : asset.geometryFor(EntityAsset.DEFAULT_VARIANT);
-        if (geometry == null) return null;
-        for (EntityAttachmentPoint socket : geometry.attachmentPoints()) {
-            if (socket.name().equalsIgnoreCase(socketName)) {
-                return socket;
-            }
-        }
-        return null;
     }
 
     @Override

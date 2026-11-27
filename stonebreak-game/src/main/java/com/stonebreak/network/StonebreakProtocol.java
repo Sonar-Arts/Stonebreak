@@ -137,6 +137,8 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.vehicle.VehicleMoveC2S.CODEC);
         r.register(PLAY, SERVERBOUND, 41, com.stonebreak.network.packet.player.PlayerDamageC2S.class,
                 com.stonebreak.network.packet.player.PlayerDamageC2S.CODEC);
+        r.register(PLAY, SERVERBOUND, 42, com.stonebreak.network.packet.player.PlayerAppearanceC2S.class,
+                com.stonebreak.network.packet.player.PlayerAppearanceC2S.CODEC);
 
         // ── clientbound (S2C) ──────────────────────────────────────────────
         r.register(PLAY, CLIENTBOUND, 1, CubeDataS2C.class, CubeDataS2C.CODEC);
@@ -186,6 +188,8 @@ public final class StonebreakProtocol {
                 com.stonebreak.network.packet.player.StatCreditS2C.CODEC);
         r.register(PLAY, CLIENTBOUND, 38, com.stonebreak.network.packet.entity.EntityAwarenessS2C.class,
                 com.stonebreak.network.packet.entity.EntityAwarenessS2C.CODEC);
+        r.register(PLAY, CLIENTBOUND, 39, com.stonebreak.network.packet.player.PlayerAppearanceS2C.class,
+                com.stonebreak.network.packet.player.PlayerAppearanceS2C.CODEC);
 
         return r;
     }

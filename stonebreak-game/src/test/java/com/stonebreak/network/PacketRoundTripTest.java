@@ -176,6 +176,15 @@ class PacketRoundTripTest {
         assertEquals(new PlayerHeldItemS2C(2, 5), roundTrip(PlayerHeldItemS2C.CODEC, new PlayerHeldItemS2C(2, 5)));
         assertEquals(new GiveItemS2C(3, 64), roundTrip(GiveItemS2C.CODEC, new GiveItemS2C(3, 64)));
         assertEquals(new PlayerJoinS2C(2, "bob", 1f, 2f, 3f), roundTrip(PlayerJoinS2C.CODEC, new PlayerJoinS2C(2, "bob", 1f, 2f, 3f)));
+        byte[] look = {'O', 'L', 1, 0, 2, 7, 9};
+        assertEquals(new PlayerJoinS2C(2, "bob", 1f, 2f, 3f, look),
+            roundTrip(PlayerJoinS2C.CODEC, new PlayerJoinS2C(2, "bob", 1f, 2f, 3f, look)));
+        assertEquals(new com.stonebreak.network.packet.player.PlayerAppearanceC2S(look, true),
+            roundTrip(com.stonebreak.network.packet.player.PlayerAppearanceC2S.CODEC,
+                new com.stonebreak.network.packet.player.PlayerAppearanceC2S(look, true)));
+        assertEquals(new com.stonebreak.network.packet.player.PlayerAppearanceS2C(5, look),
+            roundTrip(com.stonebreak.network.packet.player.PlayerAppearanceS2C.CODEC,
+                new com.stonebreak.network.packet.player.PlayerAppearanceS2C(5, look)));
         assertEquals(new PlayerLeaveS2C(2), roundTrip(PlayerLeaveS2C.CODEC, new PlayerLeaveS2C(2)));
         assertEquals(new ChatMessageC2S("hi"), roundTrip(ChatMessageC2S.CODEC, new ChatMessageC2S("hi")));
         assertEquals(new ChatMessageS2C(1, "bob", "hi"), roundTrip(ChatMessageS2C.CODEC, new ChatMessageS2C(1, "bob", "hi")));

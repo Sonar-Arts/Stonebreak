@@ -263,14 +263,15 @@ public class EntityRenderer {
      * Draws the player model as a UI preview (character creation, inventory) into whatever viewport/scissor the
      * caller has set up, with a caller-supplied camera: a standing body animated by the player graph (#457), head
      * forward, no fog, under the fixed UI preview lighting rig. {@code time} is the preview clock (seconds) that
-     * advances it. {@code attachmentKey} adds socket-mounted accessories (the character creation Looks tab passes
-     * {@link com.stonebreak.mobs.sbe.EntityAttachments#LOCAL_PLAYER}); null skips them.
+     * advances it. {@code mounts} adds socket-mounted accessories (the character creation Looks tab passes the
+     * look being edited); null skips them.
      */
     public void renderPlayerPreview(float time, Vector3f position, float yawDegrees, Vector3f scale,
-                                    Matrix4f viewMatrix, Matrix4f projectionMatrix, Object attachmentKey) {
+                                    Matrix4f viewMatrix, Matrix4f projectionMatrix,
+                                    com.stonebreak.mobs.sbe.BodyMounts mounts) {
         if (!initialized) return;
         withUiPreviewLighting(() -> playerFigureRenderer.renderPlayerPreview(time, position, yawDegrees, scale,
-                viewMatrix, projectionMatrix, attachmentKey));
+                viewMatrix, projectionMatrix, mounts));
     }
 
     /**
@@ -280,10 +281,10 @@ public class EntityRenderer {
     public void renderStagedPlayer(String stateName, float animationTime,
                                    Vector3f position, float yawDegrees, Vector3f scale,
                                    Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                                   Object attachmentKey) {
+                                   com.stonebreak.mobs.sbe.BodyMounts mounts) {
         if (!initialized) return;
         playerFigureRenderer.renderStagedPose(stateName, animationTime, position, yawDegrees, scale,
-                viewMatrix, projectionMatrix, attachmentKey);
+                viewMatrix, projectionMatrix, mounts);
     }
 
     /**

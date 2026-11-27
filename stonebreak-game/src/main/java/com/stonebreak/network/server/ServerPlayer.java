@@ -341,6 +341,37 @@ public final class ServerPlayer {
         return chat.tryTake(nowNanos);
     }
 
+    // ─── Look (#459): server-owned, saved with the player, sent to every client ──────────────────
+
+    /** Look changes this player may ask for: a burst of 8 (a few clicks through the options), then two a second. */
+    static final double LOOK_BURST = 8;
+    static final double LOOK_PER_SECOND = 2.0;
+    private final com.openmason.engine.net.pipeline.TokenBucket lookChanges =
+            new com.openmason.engine.net.pipeline.TokenBucket(LOOK_BURST, LOOK_PER_SECOND);
+
+    private volatile com.stonebreak.player.appearance.PlayerAppearance appearance;
+    /** True once the look was set for real (a save, character creation, a change); an offer is then ignored. */
+    private volatile boolean appearanceStored;
+
+    /** The player's look (the catalog's defaults before one is known). */
+    public com.stonebreak.player.appearance.PlayerAppearance appearance() {
+        com.stonebreak.player.appearance.PlayerAppearance a = appearance;
+        return a != null ? a : com.stonebreak.player.appearance.PlayerAppearance.defaults();
+    }
+
+    /** Whether the look was ever set for this player (a save without one, or a new player: false). */
+    public boolean appearanceStored() { return appearanceStored; }
+
+    public void setAppearance(com.stonebreak.player.appearance.PlayerAppearance look, boolean stored) {
+        this.appearance = look;
+        this.appearanceStored = stored;
+    }
+
+    /** Debits one look change; false = asking too fast. */
+    public boolean allowLookChange(long nowNanos) {
+        return lookChanges.tryTake(nowNanos);
+    }
+
     /** Held item id last broadcast for this player; the tick re-broadcasts only on change. */
     private int broadcastHeldItemId = Integer.MIN_VALUE;
 

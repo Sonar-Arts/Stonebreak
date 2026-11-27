@@ -1,21 +1,21 @@
 package com.stonebreak.rendering.player.items;
 
-import com.openmason.engine.rendering.sprite.VoxelData;
 import com.stonebreak.items.ItemType;
+import com.stonebreak.items.held.HeldGrip;
+import com.stonebreak.items.held.HeldGrips;
 import com.stonebreak.player.Player;
 import com.stonebreak.rendering.models.entities.HeldItemFrames;
-import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
 /**
- * Where a held staff's head is in the world — the point its fire bolts leave from. The head
- * is the curl at the top of the staff sprite; it is carried through the same transforms the
- * staff is drawn with, so a bolt leaves the staff the player sees in first person, and the
- * staff other players see in their hand in third person.
+ * Where a held staff's head is in the world — the point its fire bolts leave from: the staff's {@code head} held
+ * point (#459, authored in its SBO {@code held} data: the curl at the top of the sprite), carried through the same
+ * transforms the staff is drawn with, so a bolt leaves the staff the player sees in first person, and the staff other
+ * players see in their hand in third person.
  */
 public final class StaffHead {
-    /** Sprite rows, from the top, that hold the curl. */
-    private static final int HEAD_ROWS = 5;
 
     private static Vector3f meshPoint;
     private static boolean located;
@@ -28,42 +28,39 @@ public final class StaffHead {
      * staff's geometry (or the renderer) isn't available.
      */
     public static org.joml.Vector3d world(Player player) {
+        if (player.isThirdPerson()) {
+            // The staff on the body's grip socket (#458); the eye-height fallback is RaycastEngine's.
+            return HeldItemFrames.point(player, HeldItemFrames.HEAD, new org.joml.Vector3d());
+        }
         Vector3f head = meshPoint();
         if (head == null) {
             return null;
-        }
-        if (player.isThirdPerson()) {
-            // The staff on the body's grip socket (#458); the eye-height fallback is RaycastEngine's.
-            org.joml.Matrix4f frame = HeldItemFrames.of(player, new org.joml.Matrix4f());
-            return frame == null ? null : HeldItemFrames.worldPoint(frame,
-                    HeldItemFrames.spritePoint(head, new Vector3f()), new org.joml.Vector3d());
         }
         com.stonebreak.rendering.Renderer renderer = com.stonebreak.core.Game.getRenderer();
         return renderer != null ? renderer.getPlayerArmRenderer().heldPointWorld(player, head) : null;
     }
 
     /**
-     * The head in the staff's voxel-mesh space: the centroid of the curl's voxels. Computed
-     * once; null when the staff sprite can't be voxelized.
+     * The head in the staff's voxel-mesh space (what the first-person arm draws), from its {@code head} held point in
+     * the canonical held frame. Computed once; null when the staff authors no head.
      */
     static Vector3f meshPoint() {
         if (located) {
             return meshPoint;
         }
         located = true;
-        SpriteVoxelizer.VoxelizationResult result = SpriteVoxelizer.voxelizeSpriteWithPalette(ItemType.STAFF, null);
-        if (result == null || !result.isValid()) {
-            return null;
-        }
-        Vector3f sum = new Vector3f();
-        int count = 0;
-        for (VoxelData voxel : result.getVoxels()) {
-            if (voxel.getTextureY() < HEAD_ROWS) {
-                sum.add(voxel.getPosition());
-                count++;
+        HeldGrip grip = HeldGrips.of(ItemType.STAFF);
+        Matrix4fc head = null;
+        if (grip != null) {
+            for (var e : grip.points().entrySet()) {
+                if (e.getKey().equalsIgnoreCase(HeldItemFrames.HEAD)) head = e.getValue();
             }
         }
-        meshPoint = count > 0 ? sum.div(count) : null;
+        if (head == null) {
+            return null;
+        }
+        meshPoint = new Matrix4f(HeldItemFrames.SPRITE).invertAffine()
+                .transformPosition(head.getTranslation(new Vector3f()));
         return meshPoint;
     }
 }

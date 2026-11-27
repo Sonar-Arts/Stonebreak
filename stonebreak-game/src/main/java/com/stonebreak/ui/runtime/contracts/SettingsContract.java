@@ -73,11 +73,8 @@ public final class SettingsContract {
             range(0, 1, "music volume"), Live.PUSHED);
         add("musicEnabled", DataType.bool(), s -> UiValue.of(s.getMusicEnabled()), (s, v) -> s.setMusicEnabled(b(v)),
             null, Live.PUSHED);
-        // player model
-        add("selectedHat", DataType.string(), s -> UiValue.of(s.getSelectedHat()), (s, v) -> s.setSelectedHat(str(v)),
-            null, Live.ON_APPLY);
-        add("selectedHair", DataType.string(), s -> UiValue.of(s.getSelectedHair()), (s, v) -> s.setSelectedHair(str(v)),
-            null, Live.ON_APPLY);
+        // (#459: the player's look is no longer a setting: it is the look record the server keeps, edited in the
+        //  character screens; selectedHat / selectedHair were bound by no shipped document.)
         // crosshair
         add("crosshairStyle", DataType.string(), s -> UiValue.of(s.getCrosshairStyle()),
             (s, v) -> s.setCrosshairStyle(str(v)), oneOf("crosshair style", SettingsConfig.CROSSHAIR_STYLES), Live.ON_APPLY);

@@ -71,6 +71,8 @@ public final class PlayerData {
     // Entity glossary discoveries
     private final Map<String, Set<String>> discoveredVariantsByEntityType;
     private final Set<String> discoveredWeaknessEntityTypes;
+    /** The player's look (#459): an omlook JSON record kept by the server, or null = never set (old saves). */
+    private final String appearance;
 
     private PlayerData(Builder builder) {
         this.position = new Vector3d(builder.position);
@@ -111,6 +113,7 @@ public final class PlayerData {
         this.statKillsByEntityType = Collections.unmodifiableMap(new HashMap<>(builder.statKillsByEntityType));
         this.discoveredVariantsByEntityType = Collections.unmodifiableMap(new HashMap<>(builder.discoveredVariantsByEntityType));
         this.discoveredWeaknessEntityTypes = Collections.unmodifiableSet(new HashSet<>(builder.discoveredWeaknessEntityTypes));
+        this.appearance = builder.appearance;
     }
 
     // Getters - return defensive copies for mutable objects
@@ -156,6 +159,8 @@ public final class PlayerData {
     // Discoveries
     public Map<String, Set<String>> getDiscoveredVariantsByEntityType() { return discoveredVariantsByEntityType; }
     public Set<String> getDiscoveredWeaknessEntityTypes() { return discoveredWeaknessEntityTypes; }
+    /** The look as omlook JSON, or null when the save has none (it then loads with the defaults). */
+    public String getAppearance() { return appearance; }
 
     /**
      * Creates a new PlayerData with updated last saved time.
@@ -220,6 +225,7 @@ public final class PlayerData {
         // Discoveries (default empty — backward-compatible for old saves)
         private Map<String, Set<String>> discoveredVariantsByEntityType = new HashMap<>();
         private Set<String> discoveredWeaknessEntityTypes = new HashSet<>();
+        private String appearance;
 
         public Builder() {
             // Initialize empty inventory
@@ -267,6 +273,7 @@ public final class PlayerData {
             this.statKillsByEntityType = new HashMap<>(data.statKillsByEntityType);
             this.discoveredVariantsByEntityType = new HashMap<>(data.discoveredVariantsByEntityType);
             this.discoveredWeaknessEntityTypes = new HashSet<>(data.discoveredWeaknessEntityTypes);
+            this.appearance = data.appearance;
         }
 
         /** Float convenience (widened exactly); prefer {@link #position(Vector3dc)}. */
@@ -442,6 +449,11 @@ public final class PlayerData {
 
         public Builder discoveredVariantsByEntityType(Map<String, Set<String>> map) {
             this.discoveredVariantsByEntityType = new HashMap<>(map);
+            return this;
+        }
+
+        public Builder appearance(String lookJson) {
+            this.appearance = lookJson == null || lookJson.isBlank() ? null : lookJson;
             return this;
         }
 

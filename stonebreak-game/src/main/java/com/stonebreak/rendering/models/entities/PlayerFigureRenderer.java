@@ -3,7 +3,7 @@ package com.stonebreak.rendering.models.entities;
 import com.openmason.engine.entity.model.EntityAsset;
 import com.openmason.engine.rig.JointPalette;
 import com.stonebreak.mobs.sbe.AnimState;
-import com.stonebreak.mobs.sbe.EntityAttachments;
+import com.stonebreak.mobs.sbe.BodyMounts;
 import com.stonebreak.player.animation.PlayerBodyAnimator;
 import com.stonebreak.player.animation.PlayerPoseInputs;
 import org.joml.Matrix4f;
@@ -50,8 +50,7 @@ final class PlayerFigureRenderer {
                            com.stonebreak.world.World world, Vector3dc cameraPos) {
         PosedPlayerBody body = PosedPlayerBody.of(player);
         if (body == null) return;
-        draw(body, ensureLocalPlayerColor(), viewMatrix, projectionMatrix, world, cameraPos,
-                EntityAttachments.LOCAL_PLAYER);
+        draw(body, ensureLocalPlayerColor(), viewMatrix, projectionMatrix, world, cameraPos, player.mounts());
     }
 
     /**
@@ -66,22 +65,22 @@ final class PlayerFigureRenderer {
             remotePlayerRenderer.render(rp, viewMatrix, projectionMatrix);
             return;
         }
-        draw(body, untexturedTint, viewMatrix, projectionMatrix, world, cameraPos, rp);
+        draw(body, untexturedTint, viewMatrix, projectionMatrix, world, cameraPos, rp.lookMounts());
     }
 
     /**
      * The UI preview (character creation, inventory): a standing body with the head forward, advanced by the preview
-     * clock {@code time} (seconds); {@code attachmentKey} null skips socket attachments.
+     * clock {@code time} (seconds); {@code mounts} null skips socket attachments.
      */
     void renderPlayerPreview(float time, Vector3f position, float yawDegrees, Vector3f scale,
-                             Matrix4f viewMatrix, Matrix4f projectionMatrix, Object attachmentKey) {
+                             Matrix4f viewMatrix, Matrix4f projectionMatrix, BodyMounts mounts) {
         if (previewBody == null) previewBody = PlayerBodyAnimator.player();
         float dt = Float.isNaN(previewTime) ? 0f : Math.clamp(time - previewTime, 0f, MAX_PREVIEW_STEP);
         previewTime = time;
         if (dt > 0f || !previewBody.posed()) previewBody.update(dt, previewInputs, PlayerBodyAnimator.Events.NONE);
         draw(new PosedPlayerBody(previewBody.set().asset(), previewBody.palette(),
                         SbePoseSolver.baseMatrix(position, yawDegrees, scale)), ensureLocalPlayerColor(),
-                viewMatrix, projectionMatrix, null, null, attachmentKey);
+                viewMatrix, projectionMatrix, null, null, mounts);
     }
 
     /**
@@ -89,7 +88,7 @@ final class PlayerFigureRenderer {
      * is to be retired with the player rebuild, #457).
      */
     void renderStagedPose(String stateName, float animationTime, Vector3f position, float yawDegrees, Vector3f scale,
-                          Matrix4f viewMatrix, Matrix4f projectionMatrix, Object attachmentKey) {
+                          Matrix4f viewMatrix, Matrix4f projectionMatrix, BodyMounts mounts) {
         EntityAsset asset = SbeRenderSupport.playerAsset();
         if (asset == null) return;
         AnimState anim = AnimState.single(stateName, animationTime);
@@ -101,8 +100,8 @@ final class PlayerFigureRenderer {
             sbeEntityRenderer.renderColored(asset, EntityAsset.DEFAULT_VARIANT, anim, at, yawDegrees, scale,
                     viewMatrix, projectionMatrix, ensureLocalPlayerColor(), 0f, 0f);
         }
-        if (attachmentKey != null) {
-            attachmentRenderer.render(attachmentKey, asset, EntityAsset.DEFAULT_VARIANT, anim, at, yawDegrees, scale,
+        if (mounts != null) {
+            attachmentRenderer.render(mounts, asset, EntityAsset.DEFAULT_VARIANT, anim, at, yawDegrees, scale,
                     0f, 0f, viewMatrix, projectionMatrix, null, null);
         }
     }
@@ -110,7 +109,7 @@ final class PlayerFigureRenderer {
     /** The one way a posed player body is drawn: textured or tinted, then its sockets. */
     private void draw(PosedPlayerBody body, Vector4f tint,
                       Matrix4f viewMatrix, Matrix4f projectionMatrix,
-                      com.stonebreak.world.World world, Vector3dc cameraPos, Object attachmentKey) {
+                      com.stonebreak.world.World world, Vector3dc cameraPos, BodyMounts mounts) {
         EntityAsset asset = body.asset();
         JointPalette posed = body.palette();
         Matrix4f base = body.base();
@@ -121,8 +120,8 @@ final class PlayerFigureRenderer {
             sbeEntityRenderer.renderColoredPosed(asset, EntityAsset.DEFAULT_VARIANT, posed, base,
                     viewMatrix, projectionMatrix, tint);
         }
-        if (attachmentKey != null) {
-            attachmentRenderer.renderPosed(attachmentKey, asset, EntityAsset.DEFAULT_VARIANT, posed, base,
+        if (mounts != null) {
+            attachmentRenderer.renderPosed(mounts, asset, EntityAsset.DEFAULT_VARIANT, posed, base,
                     viewMatrix, projectionMatrix, world, cameraPos);
         }
     }

@@ -6,9 +6,12 @@ import com.stonebreak.items.Item;
 import com.stonebreak.items.ItemType;
 import com.stonebreak.items.held.HeldGrip;
 import com.stonebreak.items.held.HeldGrips;
+import com.stonebreak.items.held.HeldKind;
+import com.stonebreak.mobs.sbe.BodyMounts;
+import com.stonebreak.mobs.sbe.HostSockets;
+import com.openmason.engine.rig.SocketSet;
 import com.stonebreak.mobs.entities.RemotePlayer;
 import com.stonebreak.player.Player;
-import com.stonebreak.player.animation.PlayerAnimationSet;
 import com.stonebreak.rendering.player.items.voxelization.SpriteVoxelizer;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -44,25 +47,92 @@ public final class HeldItemFrames {
     private HeldItemFrames() {
     }
 
+    /** The mount the held object hangs on (#459): drawn by the held-item pass, not the attachment pass. */
+    public static final String HELD_MOUNT = "held";
+    /** The item point names the game reads (#459): a torch's flame, a rod's tip, a staff's head. */
+    public static final String FLAME = "flame";
+    public static final String TIP = "tip";
+    public static final String HEAD = "head";
+
+    /** Scratch mounts for bodies that carry none of their own (a preview, a test's local body). */
+    private static final ThreadLocal<BodyMounts> SCRATCH = ThreadLocal.withInitial(BodyMounts::new);
+
     /** The local player's held object frame (render space), or null (empty hand, body not posed, no socket). */
     public static Matrix4f of(Player player, Matrix4f dest) {
-        return player == null ? null : of(PosedPlayerBody.of(player), player.getHeldItem(), dest);
+        return player == null ? null : of(PosedPlayerBody.of(player), player.mounts(), player.getHeldItem(), dest);
     }
 
     /** A remote player's or decoy's held object frame (render space), or null. */
     public static Matrix4f of(RemotePlayer rp, Matrix4f dest) {
-        return rp == null ? null : of(PosedPlayerBody.of(rp), rp.getHeldItem(), dest);
+        return rp == null ? null : of(PosedPlayerBody.of(rp), rp.mounts(), rp.getHeldItem(), dest);
     }
 
     /** {@code base · K(socket joint) · socket · grip} on {@code body}, or null. */
     static Matrix4f of(PosedPlayerBody body, Item item, Matrix4f dest) {
-        if (body == null || item == null) return null;
-        HeldGrip grip = HeldGrips.of(item);
-        if (grip == null) return null;
-        PlayerAnimationSet.Socket socket = PlayerAnimationSet.player().socket(grip.socket());
-        if (socket == null) return null;
-        socket.frame(body.palette(), body.base(), dest);
-        return dest.mul(grip.local());
+        return of(body, SCRATCH.get(), item, dest);
+    }
+
+    /** The held object's frame on {@code body} through its {@code mounts} (the held mount kept in step), or null. */
+    static Matrix4f of(PosedPlayerBody body, BodyMounts mounts, Item item, Matrix4f dest) {
+        int index = resolve(body, mounts, item);
+        return index < 0 ? null : mounts.frame(index, dest);
+    }
+
+    /**
+     * The world position of the held object's point {@code name} ({@link #FLAME}, {@link #TIP}, {@link #HEAD}) on the
+     * local player's body, or null (nothing held, body not posed, no such point).
+     */
+    public static Vector3d point(Player player, String name, Vector3d dest) {
+        return player == null ? null : point(PosedPlayerBody.of(player), player.mounts(), player.getHeldItem(), name, dest);
+    }
+
+    /** {@link #point(Player, String, Vector3d)} for a remote player or decoy. */
+    public static Vector3d point(RemotePlayer rp, String name, Vector3d dest) {
+        return rp == null ? null : point(PosedPlayerBody.of(rp), rp.mounts(), rp.getHeldItem(), name, dest);
+    }
+
+    static Vector3d point(PosedPlayerBody body, BodyMounts mounts, Item item, String name, Vector3d dest) {
+        int index = resolve(body, mounts, item);
+        if (index < 0) return null;
+        Vector3f render = mounts.pointPosition(index, name, new Vector3f());
+        return render == null ? null : RenderOrigin.toWorld(render, dest);
+    }
+
+    /** Keeps the held mount on {@code item} and resolves the body's mounts; the held mount's index, or -1. */
+    private static int resolve(PosedPlayerBody body, BodyMounts mounts, Item item) {
+        sync(mounts, item);
+        if (body == null || item == null || mounts.get(HELD_MOUNT) == null) return -1;
+        SocketSet sockets = HostSockets.of(body.asset(), com.openmason.engine.entity.model.EntityAsset.DEFAULT_VARIANT);
+        if (sockets == null) return -1;
+        mounts.resolve(sockets, body.palette(), body.base(), body.base());
+        return mounts.indexOf(HELD_MOUNT);
+    }
+
+    /** Puts {@code item} on the held mount (its grip, its points), or takes the mount off for an empty hand. */
+    static void sync(BodyMounts mounts, Item item) {
+        if (mounts.heldKey() == item && (item == null || mounts.get(HELD_MOUNT) != null)) return;
+        HeldGrip grip = item == null ? null : HeldGrips.of(item);
+        if (grip == null) {
+            mounts.remove(HELD_MOUNT);
+        } else {
+            mounts.put(new BodyMounts.Mount(HELD_MOUNT, grip.socket(), null, grip.local(), null, points(item, grip)));
+        }
+        mounts.setHeldKey(item);
+    }
+
+    /**
+     * The held points of {@code item}: its grip's authored points, plus an automatic {@link #TIP} for a sprite that
+     * authors none (its voxel farthest along the handle-to-tip axis).
+     */
+    public static Map<String, Matrix4fc> points(Item item, HeldGrip grip) {
+        Map<String, Matrix4fc> points = new java.util.LinkedHashMap<>(grip.points());
+        boolean hasTip = points.keySet().stream().anyMatch(TIP::equalsIgnoreCase);
+        if (!hasTip && item instanceof ItemType type && HeldKind.of(item) != HeldKind.BLOCK
+                && HeldKind.of(item) != HeldKind.MODEL) {
+            Vector3f tip = spriteTip(type);
+            if (tip != null) points.put(TIP, new Matrix4f().translation(tip));
+        }
+        return points;
     }
 
     /** A canonical-frame point of a held object under {@code frame} (render space), as a world position. */

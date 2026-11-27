@@ -63,7 +63,7 @@ final class SbeMobRenderer {
                 mob.getScale(),
                 viewMatrix, projectionMatrix, world, cameraPos);
         sbeEntityRenderer.setLook(SbeEntityRenderer.Look.NONE);
-        attachmentRenderer.render(mob, asset, mob.getTextureVariant(),
+        attachmentRenderer.render(mob.mountsIfAny(), asset, mob.getTextureVariant(),
                 com.stonebreak.mobs.sbe.AnimState.single(stateName, clipTime),
                 anchoredPos, mob.getRotation().y, mob.getScale(), 0f, 0f,
                 viewMatrix, projectionMatrix, world, cameraPos);

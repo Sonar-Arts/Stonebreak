@@ -28,8 +28,7 @@ class SettingsPersistenceTest {
         s.setMasterVolume(0.25f);
         s.setMusicVolume(0.75f);
         s.setMusicEnabled(false);
-        s.setSelectedHat("TOP_HAT");
-        s.setSelectedHair("MALE_HAIR_2");
+        s.setPreferredLook("{\"format\":\"omlook\",\"version\":\"1.0\",\"slots\":{\"hat\":\"TOP_HAT\"}}");
         s.setCrosshairStyle("DOT");
         s.setCrosshairSize(24.0f);
         s.setCrosshairThickness(3.0f);
@@ -73,8 +72,7 @@ class SettingsPersistenceTest {
         assertEquals(expected.getMasterVolume(), actual.getMasterVolume(), EPS);
         assertEquals(expected.getMusicVolume(), actual.getMusicVolume(), EPS);
         assertEquals(expected.getMusicEnabled(), actual.getMusicEnabled());
-        assertEquals(expected.getSelectedHat(), actual.getSelectedHat());
-        assertEquals(expected.getSelectedHair(), actual.getSelectedHair());
+        assertEquals(expected.getPreferredLook(), actual.getPreferredLook());
         assertEquals(expected.getCrosshairStyle(), actual.getCrosshairStyle());
         assertEquals(expected.getCrosshairSize(), actual.getCrosshairSize(), EPS);
         assertEquals(expected.getCrosshairThickness(), actual.getCrosshairThickness(), EPS);
@@ -140,10 +138,11 @@ class SettingsPersistenceTest {
     @Test
     void serialisedTreeHasOneFieldPerSetting() {
         ObjectNode tree = fullyPopulated().toJson();
-        assertEquals(47, tree.size());
+        assertEquals(45, tree.size());
         assertTrue(tree.has("connectedShapes"));
         assertTrue(tree.has("verticalRenderDistance"));
-        assertTrue(tree.has("selectedAccessory"));
+        assertTrue(tree.has("preferredLook"));
+        assertTrue(!tree.has("selectedHat") && !tree.has("selectedHair") && !tree.has("selectedAccessory"));
         assertTrue(tree.has("particlesEnabled"));
         assertTrue(tree.has("particleDensity"));
         assertTrue(tree.has("pauseSingleplayerWorld"));
@@ -235,49 +234,51 @@ class SettingsPersistenceTest {
         assertFalse(loaded.toJson().has("armModelType"));
     }
 
+    /** #459: the old cosmetic keys become the preferred look, once; the old keys are never written again. */
     @Test
-    void legacyHairSelectionMovesToHairSlot() throws Exception {
-        for (String id : new String[]{"MALE_HAIR_1", "male_hair_2"}) {
-            Settings loaded = new Settings();
-            loaded.apply(MAPPER.readTree("{\"selectedHat\":\"" + id + "\"}"));
-            assertEquals("NONE", loaded.getSelectedHat());
-            assertEquals(id.toUpperCase(java.util.Locale.ROOT), loaded.getSelectedHair());
-            Settings roundTrip = new Settings();
-            roundTrip.apply(loaded.toJson());
-            assertEquals(loaded.toJson(), roundTrip.toJson());
-        }
-    }
-
-    @Test
-    void explicitHairChoiceWinsOverLegacyHatValue() throws Exception {
-        for (String id : new String[]{"NONE", "MALE_HAIR_2"}) {
-            Settings loaded = new Settings();
-            loaded.apply(MAPPER.readTree("{\"selectedHat\":\"MALE_HAIR_1\",\"selectedHair\":\"" + id + "\"}"));
-            assertEquals("NONE", loaded.getSelectedHat());
-            assertEquals(id, loaded.getSelectedHair());
-        }
-    }
-
-    @Test
-    void legacyHatAndAbsentHairKeepTheirOwnDefaults() throws Exception {
+    void legacyCosmeticsMigrateOnceIntoThePreferredLook() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(com.openmason.engine.cenda.CendaKernels.isAvailable(),
+                "the look codec is native");
         Settings loaded = new Settings();
-        loaded.apply(MAPPER.readTree("{\"selectedHat\":\"TOP_HAT\"}"));
-        assertEquals("TOP_HAT", loaded.getSelectedHat());
-        assertEquals("NONE", loaded.getSelectedHair());
+        loaded.apply(MAPPER.readTree(
+                "{\"selectedHat\":\"TOP_HAT\",\"selectedHair\":\"MALE_HAIR_2\",\"selectedAccessory\":\"GOLD_EARRING\"}"));
+        var look = com.stonebreak.player.appearance.PlayerAppearance.readJson(loaded.getPreferredLook());
+        assertEquals("TOP_HAT", look.item("hat"));
+        assertEquals("MALE_HAIR_2", look.item("hair"));
+        assertEquals("GOLD_EARRING", look.item("accessory"));
+        ObjectNode saved = loaded.toJson();
+        assertTrue(!saved.has("selectedHat") && !saved.has("selectedHair") && !saved.has("selectedAccessory"));
+
+        // Once: a file that already has a preferred look ignores stale old keys.
+        Settings again = new Settings();
+        ObjectNode mixed = saved.deepCopy();
+        mixed.put("selectedHat", "PIRATE_HAT");
+        again.apply(mixed);
+        assertEquals(loaded.getPreferredLook(), again.getPreferredLook());
     }
 
     @Test
-    void changingOrClearingOneSlotPreservesTheOther() {
-        Settings settings = new Settings();
-        settings.setSelectedHat("TOP_HAT");
-        settings.setSelectedHair("MALE_HAIR_1");
-        settings.setSelectedHat(null);
-        assertEquals("NONE", settings.getSelectedHat());
-        assertEquals("MALE_HAIR_1", settings.getSelectedHair());
-        settings.setSelectedHat("TOP_HAT");
-        settings.setSelectedHair(" ");
-        assertEquals("TOP_HAT", settings.getSelectedHat());
-        assertEquals("NONE", settings.getSelectedHair());
+    void legacyHairInTheHatSlotMovesToHairUnlessHairWasChosen() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(com.openmason.engine.cenda.CendaKernels.isAvailable(),
+                "the look codec is native");
+        Settings old = new Settings();
+        old.apply(MAPPER.readTree("{\"selectedHat\":\"male_hair_1\"}"));
+        var look = com.stonebreak.player.appearance.PlayerAppearance.readJson(old.getPreferredLook());
+        assertEquals("NONE", look.item("hat"));
+        assertEquals("MALE_HAIR_1", look.item("hair"));
+
+        Settings explicit = new Settings();
+        explicit.apply(MAPPER.readTree("{\"selectedHat\":\"MALE_HAIR_1\",\"selectedHair\":\"MALE_HAIR_2\"}"));
+        var look2 = com.stonebreak.player.appearance.PlayerAppearance.readJson(explicit.getPreferredLook());
+        assertEquals("NONE", look2.item("hat"));
+        assertEquals("MALE_HAIR_2", look2.item("hair"));
+    }
+
+    @Test
+    void noOldKeysNoPreferredLook() throws Exception {
+        Settings loaded = new Settings();
+        loaded.apply(MAPPER.readTree("{\"masterVolume\": 0.5}"));
+        assertEquals(null, loaded.getPreferredLook());
     }
 
     /** #288: accessibility preferences and remapped UI bindings persist; defaults write no bindings. */

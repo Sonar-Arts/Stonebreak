@@ -5,7 +5,6 @@ import com.stonebreak.battle.api.BattleStageLayout;
 import com.stonebreak.battle.api.BattleView;
 import com.stonebreak.battle.api.CombatantId;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.sbe.EntityAttachments;
 import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.openmason.engine.entity.model.EntityGeometry;
@@ -71,9 +70,11 @@ public final class BattleActors {
         if (monkPose.presence() > MIN_VISIBLE_PRESENCE) {
             ActorPlacement.Placement at = ActorPlacement.place(layout, CombatantId.MONK, monkPose,
                     restMinY(com.stonebreak.player.PlayerCharacter.ASSET_ID, EntityAsset.DEFAULT_VARIANT), 1f, false);
-            // LOCAL_PLAYER attachments: the monk wears the player's own hair and clothing.
+            // The monk wears the player's own look (hair and clothing).
+            com.stonebreak.player.Player self = com.stonebreak.core.Game.getPlayer();
             entityRenderer.renderStagedPlayer(monkPose.sbeState(), monkPose.clipTime(), at.position(),
-                    at.yawDegrees(), unitScale, view, projection, EntityAttachments.LOCAL_PLAYER);
+                    at.yawDegrees(), unitScale, view, projection,
+                    self != null ? self.mounts() : null);
         }
 
         if (archonPose.presence() > MIN_VISIBLE_PRESENCE) {

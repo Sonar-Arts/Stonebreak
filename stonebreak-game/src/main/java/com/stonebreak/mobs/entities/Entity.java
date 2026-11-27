@@ -11,7 +11,27 @@ import com.stonebreak.world.World;
  * Base class for all living entities in the game world.
  * Provides fundamental properties and behaviors that all entities share.
  */
-public abstract class Entity {
+public abstract class Entity implements com.stonebreak.mobs.sbe.MountHost {
+    /** What hangs on this entity's sockets (#459); created on first use. */
+    private volatile com.stonebreak.mobs.sbe.BodyMounts mounts;
+
+    @Override
+    public com.stonebreak.mobs.sbe.BodyMounts mounts() {
+        com.stonebreak.mobs.sbe.BodyMounts m = mounts;
+        if (m == null) {
+            synchronized (this) {
+                m = mounts;
+                if (m == null) mounts = m = new com.stonebreak.mobs.sbe.BodyMounts();
+            }
+        }
+        return m;
+    }
+
+    /** This entity's mounts if any were ever made (null otherwise); never creates them. */
+    public com.stonebreak.mobs.sbe.BodyMounts mountsIfAny() {
+        return mounts;
+    }
+
     // Transform and physics. World positions are double (#445: 64-bit worlds); velocity is a
     // relative quantity and stays float, like the engine's PhysicsBody.
     protected Vector3d position;

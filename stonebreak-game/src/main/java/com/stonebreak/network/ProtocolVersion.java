@@ -96,8 +96,10 @@ public final class ProtocolVersion {
      *  gain its clips (Float, PeekLean, JerkBack, Woosh, Cast, Scratch, Dissolve), and the replicated status set
      *  gains VEILED and SMOKESCREEN; KillCreditS2C carries whether the hit killed.
      *  31 = WelcomeS2C carries the world's feature set (WorldFeatureVersion number, one byte) after the Standard shape: The
-     *  Shade (V5) changes the biomes a client's generator reads (night fog, LOD fallback). */
-    public static final int CURRENT = 31;
+     *  Shade (V5) changes the biomes a client's generator reads (night fog, LOD fallback).
+     *  32 = the player's look (#459): PlayerJoinS2C carries it (binary omlook record), PlayerAppearanceC2S (42) asks
+     *  for a change or offers the client's preferred look, PlayerAppearanceS2C (39) announces one. */
+    public static final int CURRENT = 32;
 
     private ProtocolVersion() {}
 }

@@ -2,7 +2,7 @@ package com.stonebreak.player;
 
 import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.openmason.engine.entity.model.EntityAttachmentPoint;
-import com.stonebreak.mobs.sbe.EntityAttachments;
+import com.stonebreak.mobs.sbe.BodyMounts;
 import java.util.List;
 import java.util.stream.Stream;
 import com.openmason.engine.entity.model.EntityAsset;
@@ -102,38 +102,39 @@ class PlayerLooksTest {
 
     @Test
     void hatAndHairCanBeEquippedTogetherAndChangedIndependently() {
-        Object player = new Object();
+        BodyMounts player = new BodyMounts();
         PlayerLooks.applyHat(player, "TOP_HAT");
-        var hat = EntityAttachments.get(player).getFirst();
+        var hat = player.list().getFirst();
         PlayerLooks.applyHair(player, "MALE_HAIR_1");
-        assertEquals(2, EntityAttachments.get(player).size());
-        assertTrue(EntityAttachments.get(player).contains(hat));
+        assertEquals(2, player.list().size());
+        assertTrue(player.list().contains(hat));
         PlayerLooks.applyHair(player, "MALE_HAIR_2");
-        assertEquals(2, EntityAttachments.get(player).size());
-        assertTrue(EntityAttachments.get(player).contains(hat));
-        var hair = EntityAttachments.get(player).stream()
-                .filter(a -> a.socketName().equals(PlayerLooks.HAIR_SOCKET)).findFirst().orElseThrow();
+        assertEquals(2, player.list().size());
+        assertTrue(player.list().contains(hat));
+        var hair = player.get(PlayerLooks.HAIR_MOUNT);
+        assertEquals(PlayerLooks.HAIR_SOCKET, hair.socket());
         assertEquals(new com.stonebreak.mobs.sbe.AttachmentVisual.Model(
                         GameSbeAssets.loadAttachableResource(PlayerLooks.hairOptionFor("MALE_HAIR_2").resourcePath())),
                 hair.visual());
         PlayerLooks.applyHat(player, "NONE");
-        assertEquals(List.of(hair), EntityAttachments.get(player));
+        assertEquals(List.of(hair), player.list());
         PlayerLooks.applyHat(player, "TOP_HAT");
         PlayerLooks.applyHair(player, "NONE");
-        assertEquals(List.of(hat), EntityAttachments.get(player));
+        assertEquals(List.of(hat), player.list());
         PlayerLooks.applyHat(player, "NONE");
-        assertTrue(EntityAttachments.get(player).isEmpty());
+        assertTrue(player.list().isEmpty());
     }
 
     @Test
-    void clearingUnknownChoiceLeavesOtherSocketsAlone() {
-        Object player = new Object();
+    void clearingUnknownChoiceLeavesOtherMountsAlone() {
+        BodyMounts player = new BodyMounts();
         PlayerLooks.applyHair(player, "MALE_HAIR_1");
-        var hair = EntityAttachments.get(player).getFirst();
-        EntityAttachments.attach(player, "test_other_socket", hair.visual());
-        var before = EntityAttachments.get(player);
+        var hair = player.list().getFirst();
+        player.put(BodyMounts.Mount.on("test_other_socket", hair.visual()));
         PlayerLooks.applyHat(player, "TOP_HAT");
         PlayerLooks.applyHat(player, "missing_hat");
-        assertEquals(before, EntityAttachments.get(player));
+        assertEquals(2, player.list().size());
+        assertNull(player.get(PlayerLooks.HAT_MOUNT));
+        assertEquals(hair, player.get(PlayerLooks.HAIR_MOUNT));
     }
 }

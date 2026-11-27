@@ -43,7 +43,15 @@ import static com.stonebreak.player.PlayerConstants.SPAWN_Z;
  * Controller wiring lives in {@link PlayerControllers}; the per-tick sequencing in
  * {@link PlayerUpdatePipeline}.
  */
-public class Player {
+public class Player implements com.stonebreak.mobs.sbe.MountHost {
+    /** What hangs on the player's sockets (#459): the look's cosmetics and the held object. */
+    private final com.stonebreak.mobs.sbe.BodyMounts mounts = new com.stonebreak.mobs.sbe.BodyMounts();
+
+    @Override
+    public com.stonebreak.mobs.sbe.BodyMounts mounts() {
+        return mounts;
+    }
+
 
     private final PhysicsState state;
     private final Camera camera;

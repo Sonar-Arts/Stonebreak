@@ -64,6 +64,8 @@ public final class ClientPlayerHandler {
         if (j.playerId() == localPlayerId) {
             return;
         }
+        // Their look (#459): bodies dress from the known looks.
+        com.stonebreak.player.appearance.KnownLooks.putBinary(j.playerId(), j.appearance());
         departed.remove(j.playerId());
         usernames.put(j.playerId(), j.username());
         if (deadPlayers.contains(j.playerId())) {
@@ -76,7 +78,23 @@ public final class ClientPlayerHandler {
         spawnRemote(j.playerId(), j.username(), j.x(), j.y(), j.z());
     }
 
+    /**
+     * A player's look (#459): stored for every body that wears it (their figure, their decoys); our own also dresses
+     * the local player's body and the preview.
+     */
+    public void handleAppearance(int localPlayerId, com.stonebreak.network.packet.player.PlayerAppearanceS2C a) {
+        com.stonebreak.player.appearance.PlayerAppearance look =
+                com.stonebreak.player.appearance.KnownLooks.putBinary(a.playerId(), a.appearance());
+        if (look != null && a.playerId() == localPlayerId) {
+            com.stonebreak.player.Player local = com.stonebreak.core.Game.getPlayer();
+            if (local != null) com.stonebreak.player.appearance.AppearanceMounts.apply(look, local.mounts());
+            com.stonebreak.player.appearance.AppearanceMounts.apply(look,
+                    com.stonebreak.player.PlayerLooks.previewMounts());
+        }
+    }
+
     public void handleLeave(PlayerLeaveS2C l) {
+        com.stonebreak.player.appearance.KnownLooks.forget(l.playerId());
         departed.add(l.playerId());
         pendingJoins.removeIf(j -> j.playerId() == l.playerId());
         pendingHeldItems.remove(l.playerId());

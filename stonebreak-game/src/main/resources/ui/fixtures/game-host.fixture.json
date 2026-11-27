@@ -286,8 +286,6 @@
       "masterVolume": 0.5,
       "musicVolume": 0.5,
       "musicEnabled": true,
-      "selectedHat": "NONE",
-      "selectedHair": "NONE",
       "crosshairStyle": "SIMPLE_CROSS",
       "crosshairSize": 16,
       "crosshairThickness": 2,

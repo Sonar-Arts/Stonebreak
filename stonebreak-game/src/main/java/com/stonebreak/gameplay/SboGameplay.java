@@ -5,6 +5,7 @@ import com.stonebreak.format.sbo.SBOFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -272,8 +273,10 @@ public record SboGameplay(
      * @param position grip offset in the socket frame (blocks)
      * @param rotation grip rotation, XYZ Euler degrees (the socket convention)
      * @param scale    uniform size in the socket frame, {@code > 0}
+     * @param points   named points of the object (#459: {@code flame}, {@code tip}, {@code head}, a second grip),
+     *                 in its CANONICAL held frame; insertion order kept, names unique (case-insensitive)
      */
-    public record HeldData(String socket, Vec3 position, Vec3 rotation, float scale) {
+    public record HeldData(String socket, Vec3 position, Vec3 rotation, float scale, Map<String, HeldPoint> points) {
 
         public HeldData {
             Objects.requireNonNull(socket, "socket cannot be null");
@@ -284,6 +287,37 @@ public record SboGameplay(
             if (!Float.isFinite(scale) || scale <= 0f) {
                 throw new IllegalArgumentException("scale must be > 0, got " + scale);
             }
+            java.util.LinkedHashMap<String, HeldPoint> copy = new java.util.LinkedHashMap<>();
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            if (points != null) {
+                for (Map.Entry<String, HeldPoint> e : points.entrySet()) {
+                    String name = Objects.requireNonNull(e.getKey(), "point name cannot be null").strip();
+                    if (name.isEmpty()) throw new IllegalArgumentException("point name cannot be blank");
+                    if (!seen.add(name.toLowerCase(java.util.Locale.ROOT))) {
+                        throw new IllegalArgumentException("duplicate held point " + name);
+                    }
+                    copy.put(name, Objects.requireNonNull(e.getValue(), "point " + name + " cannot be null"));
+                }
+            }
+            points = java.util.Collections.unmodifiableMap(copy);
+        }
+
+        /** A grip without points. */
+        public HeldData(String socket, Vec3 position, Vec3 rotation, float scale) {
+            this(socket, position, rotation, scale, null);
+        }
+
+        /** This grip with {@code points} instead. */
+        public HeldData withPoints(Map<String, HeldPoint> points) {
+            return new HeldData(socket, position, rotation, scale, points);
+        }
+    }
+
+    /** A named point of a held object (#459): position and XYZ Euler degrees in its canonical held frame. */
+    public record HeldPoint(Vec3 position, Vec3 rotation) {
+        public HeldPoint {
+            position = position == null ? Vec3.ZERO : position;
+            rotation = rotation == null ? Vec3.ZERO : rotation;
         }
     }
 

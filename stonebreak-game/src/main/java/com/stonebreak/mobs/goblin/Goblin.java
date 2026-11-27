@@ -38,7 +38,7 @@ import com.stonebreak.mobs.goblin.food.StackFoodStore;
 import com.stonebreak.mobs.goblin.pack.GoblinPack;
 import com.stonebreak.mobs.goblin.pack.NearbyEntities;
 import com.stonebreak.mobs.sbe.AttachmentVisual;
-import com.stonebreak.mobs.sbe.EntityAttachments;
+import com.stonebreak.mobs.sbe.BodyMounts;
 import com.stonebreak.player.Player;
 import com.stonebreak.player.combat.BowController;
 import com.stonebreak.rendering.Renderer;
@@ -123,7 +123,7 @@ public class Goblin extends LivingEntity {
                 StandStillBehavior.idle(0.5f, 2.0f, 6.0f),
                 new WanderBehavior(0.5f, 3.0f, 8.0f, 0.8f));
         this.interactionRange = 2.5f;
-        loadout.applyTo(this);
+        loadout.applyTo(mounts());
     }
 
     private static Behavior attackFor(MobWeapon weapon, AttackTarget target) {
@@ -200,7 +200,7 @@ public class Goblin extends LivingEntity {
             shownBowState = state;
             ItemType bow = loadout.weapon().itemType();
             if (bow != null) {
-                EntityAttachments.attach(this, loadout.weapon().socket(), new AttachmentVisual.Item(bow, state));
+                mounts().put(BodyMounts.Mount.on(loadout.weapon().socket(), new AttachmentVisual.Item(bow, state)));
             }
         }
     }
@@ -231,7 +231,7 @@ public class Goblin extends LivingEntity {
     @Override
     protected void onDeath() {
         mobAI.cleanup();
-        EntityAttachments.detach(this, null);
+        mounts().clear();
         for (ItemStack drop : getDrops()) {
             DropUtil.createItemDrop(world, getPosition(), drop);
         }

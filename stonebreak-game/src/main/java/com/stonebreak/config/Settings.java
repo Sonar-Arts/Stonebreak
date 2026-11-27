@@ -30,10 +30,13 @@ public class Settings {
     private float musicVolume = 0.6f;
     private boolean musicEnabled = true;
 
-    // Hair and clothing are independent cosmetic slots.
-    private String selectedHat = "NONE";
-    private String selectedHair = "NONE";
-    private String selectedAccessory = "NONE";
+    /**
+     * The look this machine's player prefers (#459): an omlook JSON record ({@code PlayerAppearance}), what character
+     * creation starts from and what a new character on any server begins with; null = the catalog's defaults. The
+     * authoritative copy of a player's look is the one the server saves with the player. Older files' three cosmetic
+     * keys ({@code selectedHat}, {@code selectedHair}, {@code selectedAccessory}) are converted into it once.
+     */
+    private String preferredLook;
 
     // Crosshair settings
     private String crosshairStyle = "SIMPLE_CROSS";
@@ -179,9 +182,7 @@ public class Settings {
             floatField("masterVolume", Settings::getMasterVolume, Settings::setMasterVolume),
             floatField("musicVolume", Settings::getMusicVolume, Settings::setMusicVolume),
             boolField("musicEnabled", Settings::getMusicEnabled, Settings::setMusicEnabled),
-            stringField("selectedHat", Settings::getSelectedHat, Settings::setSelectedHat),
-            stringField("selectedHair", Settings::getSelectedHair, Settings::setSelectedHair),
-            stringField("selectedAccessory", Settings::getSelectedAccessory, Settings::setSelectedAccessory),
+            stringField("preferredLook", Settings::getPreferredLook, Settings::setPreferredLook),
             stringField("crosshairStyle", Settings::getCrosshairStyle, Settings::setCrosshairStyle),
             floatField("crosshairSize", Settings::getCrosshairSize, Settings::setCrosshairSize),
             floatField("crosshairThickness", Settings::getCrosshairThickness, Settings::setCrosshairThickness),
@@ -306,12 +307,41 @@ public class Settings {
                 field.read().accept(this, node);
             }
         }
-        // Older files stored hair in the single hat slot. An explicit new hair choice wins.
-        var legacyHair = com.stonebreak.player.PlayerLooks.hairOptionFor(selectedHat);
-        if (!legacyHair.id().equals(com.stonebreak.player.PlayerLooks.NO_HAIR_ID)) {
-            if (!root.path("selectedHair").isTextual()) setSelectedHair(legacyHair.id());
-            setSelectedHat("NONE");
+        if (preferredLook == null) migrateLegacyLook(root);
+    }
+
+    /**
+     * Converts the pre-#459 cosmetic keys into {@link #preferredLook}, once (the old keys are not written again). Older
+     * files also stored hair in the single hat slot; an explicit hair choice wins over that.
+     */
+    void migrateLegacyLook(JsonNode root) {
+        String hat = root.path("selectedHat").isTextual() ? root.path("selectedHat").textValue() : null;
+        String hair = root.path("selectedHair").isTextual() ? root.path("selectedHair").textValue() : null;
+        String accessory = root.path("selectedAccessory").isTextual() ? root.path("selectedAccessory").textValue() : null;
+        if (hat == null && hair == null && accessory == null) return;
+        try {
+            var catalog = com.stonebreak.player.appearance.CosmeticCatalog.get();
+            var look = com.stonebreak.player.appearance.PlayerAppearance.defaults(catalog);
+            var hatItem = catalog.item(hat);
+            if (hatItem != null && hatItem.slot().equals("hair")) {
+                if (hair == null) hair = hat;
+                hat = null;
+            }
+            look = withLegacy(catalog, look, "hat", hat);
+            look = withLegacy(catalog, look, "hair", hair);
+            look = withLegacy(catalog, look, "accessory", accessory);
+            preferredLook = look.toJson();
+            logger.info("Converted the old cosmetic settings into the preferred look");
+        } catch (RuntimeException | LinkageError e) {
+            logger.warn("Could not convert the old cosmetic settings: {}", e.toString());
         }
+    }
+
+    private static com.stonebreak.player.appearance.PlayerAppearance withLegacy(
+            com.stonebreak.player.appearance.CosmeticCatalog catalog,
+            com.stonebreak.player.appearance.PlayerAppearance look, String slot, String id) {
+        var item = catalog.item(id);
+        return item != null && item.slot().equals(slot) ? look.withItem(slot, item.id()) : look;
     }
 
     public void saveSettings() {
@@ -358,9 +388,8 @@ public class Settings {
     public boolean getMusicEnabled() { return musicEnabled; }
 
     // Player model getters
-    public String getSelectedHat() { return selectedHat; }
-    public String getSelectedHair() { return selectedHair; }
-    public String getSelectedAccessory() { return selectedAccessory; }
+    /** The preferred look's omlook JSON, or null = the catalog's defaults (#459). */
+    public String getPreferredLook() { return preferredLook; }
     
     // Crosshair getters
     public String getCrosshairStyle() { return crosshairStyle; }
@@ -443,17 +472,8 @@ public class Settings {
         this.musicEnabled = enabled;
     }
 
-    // Player model setters
-    public void setSelectedHat(String hatId) {
-        this.selectedHat = (hatId == null || hatId.isBlank()) ? "NONE" : hatId;
-    }
-    
-    public void setSelectedAccessory(String accessoryId) {
-        this.selectedAccessory = (accessoryId == null || accessoryId.isBlank()) ? "NONE" : accessoryId;
-    }
-
-    public void setSelectedHair(String hairId) {
-        this.selectedHair = (hairId == null || hairId.isBlank()) ? "NONE" : hairId;
+    public void setPreferredLook(String lookJson) {
+        this.preferredLook = lookJson == null || lookJson.isBlank() ? null : lookJson;
     }
 
     // Crosshair setters

@@ -1091,16 +1091,11 @@ public class WorldRenderer {
         }
     }
     
-    /** The tip of the rod on the body's grip socket (#458), or null before the body is posed. */
+    /** The rod's {@code tip} point on the body's grip socket (#458/#459), or null before the body is posed. */
     private static org.joml.Vector3f thirdPersonRodTip(Player player) {
-        org.joml.Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(player,
-                new org.joml.Matrix4f());
-        org.joml.Vector3f tip = com.stonebreak.rendering.models.entities.HeldItemFrames.spriteTip(
-                com.stonebreak.items.ItemType.FISHING_ROD);
-        if (frame == null || tip == null) return null;
-        org.joml.Vector3d world = com.stonebreak.rendering.models.entities.HeldItemFrames.worldPoint(frame, tip,
-                new org.joml.Vector3d());
-        return new org.joml.Vector3f((float) world.x, (float) world.y, (float) world.z);
+        org.joml.Vector3d world = com.stonebreak.rendering.models.entities.HeldItemFrames.point(player,
+                com.stonebreak.rendering.models.entities.HeldItemFrames.TIP, new org.joml.Vector3d());
+        return world == null ? null : new org.joml.Vector3f((float) world.x, (float) world.y, (float) world.z);
     }
 
     private static int debugRenderWorldCount = 0;

@@ -4,7 +4,7 @@ import com.stonebreak.items.ItemType;
 import com.stonebreak.mobs.entities.combat.MobWeapon;
 import com.stonebreak.mobs.sbe.AttachmentVisual;
 import com.stonebreak.mobs.sbe.Clothing;
-import com.stonebreak.mobs.sbe.EntityAttachments;
+import com.stonebreak.mobs.sbe.BodyMounts;
 
 import java.util.Random;
 
@@ -109,16 +109,16 @@ public record GoblinLoadout(MobWeapon weapon, Headwear headwear, String bandanaC
     }
 
     /** Hangs the weapon and cosmetics on the goblin's sockets. */
-    public void applyTo(Object entityKey) {
+    public void applyTo(BodyMounts mounts) {
         ItemType item = weapon.itemType();
         if (item != null) {
-            EntityAttachments.attach(entityKey, weapon.socket(), new AttachmentVisual.Item(item));
+            mounts.put(BodyMounts.Mount.on(weapon.socket(), new AttachmentVisual.Item(item)));
         }
         switch (headwear) {
-            case NONE -> Clothing.wear(entityKey, Clothing.HAT_SOCKET, null, null);
-            case BANDANA -> Clothing.wear(entityKey, Clothing.HAT_SOCKET, Clothing.BANDANA, bandanaColor);
-            case PIRATE_HAT -> Clothing.wear(entityKey, Clothing.HAT_SOCKET, Clothing.PIRATE_HAT, null);
+            case NONE -> Clothing.wear(mounts, Clothing.HAT_SOCKET, null, null);
+            case BANDANA -> Clothing.wear(mounts, Clothing.HAT_SOCKET, Clothing.BANDANA, bandanaColor);
+            case PIRATE_HAT -> Clothing.wear(mounts, Clothing.HAT_SOCKET, Clothing.PIRATE_HAT, null);
         }
-        Clothing.wear(entityKey, Clothing.EARRING_SOCKET, earring ? Clothing.GOLD_EARRING : null, null);
+        Clothing.wear(mounts, Clothing.EARRING_SOCKET, earring ? Clothing.GOLD_EARRING : null, null);
     }
 }

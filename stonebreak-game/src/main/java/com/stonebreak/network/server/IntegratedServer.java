@@ -93,6 +93,9 @@ public final class IntegratedServer {
     private final com.stonebreak.network.server.handlers.ServerVehicleHandler vehicleHandler;
     /** Server-owned player health, death and respawn (issue #343). */
     private final com.stonebreak.network.server.handlers.ServerHealthHandler healthHandler;
+    /** Server-owned player looks (#459). */
+    private final com.stonebreak.network.server.handlers.ServerAppearanceHandler appearanceHandler =
+            new com.stonebreak.network.server.handlers.ServerAppearanceHandler();
 
     /** The 20 Hz step: banks wall time, hands out whole ticks, clamps catch-up at 5 ticks. */
     private final com.openmason.engine.loop.FixedStep step =
@@ -690,6 +693,8 @@ public final class IntegratedServer {
                 }
             }
             case com.stonebreak.network.packet.player.PlayerDamageC2S pd -> healthHandler.handlePlayerDamage(sp, pd, ctx);
+            case com.stonebreak.network.packet.player.PlayerAppearanceC2S pa ->
+                appearanceHandler.handle(sp, pa, ctx, receivedNs);
             case HotbarSelectC2S h -> playerHandler.handleHotbarSelect(sp, h, ctx);
             case ChatMessageC2S cm -> chatHandler.handleChat(sp, cm, ctx);
             case EntityDamageC2S ed -> entityHandler.handleEntityDamage(sp, ed, ctx);
@@ -1015,12 +1020,14 @@ public final class IntegratedServer {
                 sp.send(new PlayerJoinS2C(other.playerId(), other.username(),
                     reported ? other.x() : spawn.x,
                     reported ? other.y() : spawn.y,
-                    reported ? other.z() : spawn.z));
+                    reported ? other.z() : spawn.z,
+                    other.appearance().toBinary()));
             }
         }
 
         // 3. Tell existing clients about the newcomer.
-        ctx.broadcastExcept(sp, new PlayerJoinS2C(sp.playerId(), sp.username(), spawn.x, spawn.y, spawn.z), false);
+        ctx.broadcastExcept(sp, new PlayerJoinS2C(sp.playerId(), sp.username(), spawn.x, spawn.y, spawn.z,
+                sp.appearance().toBinary()), false);
 
         // 4. Mark handshaked and deliver per-domain join snapshots.
         sp.markHandshakeDone();
@@ -1034,6 +1041,9 @@ public final class IntegratedServer {
         // 6. Health: the world's PvP rule and everyone's health to the newcomer, its own (just
         //    seeded) to everyone (#343).
         healthHandler.onPeerJoined(sp, ctx);
+
+        // 7. Its own look (#459); the client offers its preferred one if the server has none for it.
+        appearanceHandler.onPeerJoined(sp, ctx);
     }
 
     /**
@@ -1091,6 +1101,8 @@ public final class IntegratedServer {
             fresh = PlayerPrefsValidator.freshCharacter(null, null, worldName(), ctx.spawn());
         }
         seedFresh(sp, fresh, background);
+        // The look chosen in character creation (#459): checked against the catalog, the defaults when it fails.
+        sp.setAppearance(appearanceHandler.fromCreation(json, sp), true);
         // What a remote client applies (applyFromJoinData): the SERVER's record in the
         // creation shape — background bonuses included, so its mirror matches the baseline.
         sp.setCharacterCreationBlob(creationEcho(fresh, background));
@@ -1147,6 +1159,7 @@ public final class IntegratedServer {
         }
         sp.acceptBaseline(fresh);
         sp.setHealth(fresh.getHealth());
+        sp.setAppearance(com.stonebreak.player.appearance.PlayerAppearance.defaults(), false);
         org.joml.Vector3d pos = fresh.getPosition();
         sp.seedTransform(pos.x, pos.y, pos.z, fresh.getRotation().x, fresh.getRotation().y);
     }
@@ -1349,6 +1362,11 @@ public final class IntegratedServer {
         inv.loadFrom(slots);
         inv.selectHotbarSlot(data.getSelectedHotbarSlot());
         sp.acceptBaseline(data);
+        // The saved look (#459); a save without one (or with one the catalog refuses) loads with the defaults.
+        com.stonebreak.player.appearance.PlayerAppearance savedLook =
+                com.stonebreak.network.server.handlers.ServerAppearanceHandler.fromSave(data.getAppearance());
+        sp.setAppearance(savedLook != null ? savedLook : com.stonebreak.player.appearance.PlayerAppearance.defaults(),
+                savedLook != null);
         sp.setFlightEnabled(data.isFlightEnabled());
         sp.setFlying(data.isFlying());
         sp.setSpectator(data.isSpectator());

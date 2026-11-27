@@ -323,8 +323,8 @@ public final class AssetExportBuilder {
     }
 
     /**
-     * Held grip (#458): {@code {socket, position: [x,y,z], rotation: [x,y,z], scale}}; {@code null} = the held kind's
-     * default grip.
+     * Held grip (#458): {@code {socket, position: [x,y,z], rotation: [x,y,z], scale, points?: {name: {position,
+     * rotation}}}} (points #459: canonical held frame); {@code null} = the held kind's default grip.
      */
     public static SboGameplay.HeldData held(JsonNode h) {
         if (h == null || h.isNull()) {
@@ -596,6 +596,16 @@ public final class AssetExportBuilder {
         out.put("position", List.of(held.position().x(), held.position().y(), held.position().z()));
         out.put("rotation", List.of(held.rotation().x(), held.rotation().y(), held.rotation().z()));
         out.put("scale", held.scale());
+        if (!held.points().isEmpty()) {
+            Map<String, Object> points = new LinkedHashMap<>();
+            held.points().forEach((name, p) -> {
+                Map<String, Object> point = new LinkedHashMap<>();
+                point.put("position", List.of(p.position().x(), p.position().y(), p.position().z()));
+                point.put("rotation", List.of(p.rotation().x(), p.rotation().y(), p.rotation().z()));
+                points.put(name, point);
+            });
+            out.put("points", points);
+        }
         return out;
     }
 

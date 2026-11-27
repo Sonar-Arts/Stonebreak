@@ -151,4 +151,10 @@ public class IllusionDecoy extends RemotePlayer {
             }
         }
     }
+
+    /** A decoy wears its caster's look (#459). */
+    @Override
+    protected int lookOwnerId() {
+        return getOwnerPlayerId();
+    }
 }

@@ -4,9 +4,10 @@ import com.openmason.engine.anim.AnimClipDocument;
 import com.openmason.engine.animgraph.AnimGraph;
 import com.openmason.engine.animgraph.AnimGraphInstance;
 import com.openmason.engine.character.CharacterDefinition;
+import com.openmason.engine.rig.SocketSet;
+import com.stonebreak.mobs.sbe.HostSockets;
 import com.openmason.engine.entity.model.EntityAsset;
 import com.openmason.engine.entity.model.EntityGeometry;
-import com.openmason.engine.rig.JointPalette;
 import com.openmason.engine.rig.Rig;
 import com.stonebreak.mobs.sbe.GameSbeAssets;
 import com.stonebreak.player.PlayerCharacter;
@@ -18,9 +19,7 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fc;
 
 /**
  * What every body of one player model shares (#457): the model, its rig, its character definition, its animation
@@ -72,7 +71,6 @@ public final class PlayerAnimationSet {
     private final boolean footstepNotifies;
     final int speed, grounded, inWater, seated, crouched, attacking;
     final int heldKind, action, bowDraw;
-    private final Map<String, Socket> sockets = new ConcurrentHashMap<>();
     final int gaitNode;
     final int headJoint;
 
@@ -187,45 +185,11 @@ public final class PlayerAnimationSet {
     public CharacterDefinition character() { return character; }
 
     /**
-     * A character socket resolved on this model's rig (#458): the joint it rides and its local {@code T·R·S}. Null
-     * when the model has no character, no such socket, or the socket's joint is not in the rig.
+     * This model's sockets (#459): its OMO attachment points and its character's sockets (which win by name), one
+     * native {@link SocketSet} shared with every other body of the model ({@link HostSockets}).
      */
-    public Socket socket(String name) {
-        if (character == null || name == null) return null;
-        Socket s = sockets.computeIfAbsent(name, this::resolveSocket);
-        return s == Socket.MISSING ? null : s;
-    }
-
-    private Socket resolveSocket(String name) {
-        for (CharacterDefinition.Socket s : character.sockets()) {
-            if (!s.name().equals(name)) continue;
-            int joint = rig.find(s.jointId());
-            if (joint < 0) {
-                LOG.warn("{}: socket {} names joint {} that is not in the rig", asset.objectId(), name, s.jointId());
-                return Socket.MISSING;
-            }
-            Matrix4f local = new Matrix4f()
-                    .translate(s.pos().x(), s.pos().y(), s.pos().z())
-                    .rotateXYZ((float) Math.toRadians(s.rotDeg().x()), (float) Math.toRadians(s.rotDeg().y()),
-                            (float) Math.toRadians(s.rotDeg().z()))
-                    .scale(s.scale().x(), s.scale().y(), s.scale().z());
-            return new Socket(name, joint, local);
-        }
-        return Socket.MISSING;
-    }
-
-    /**
-     * A socket on this model: the rig joint whose skin matrix moves it and its rest-model-space {@code T·R·S} (the
-     * OMO attachment convention the {@code .omchar} sockets follow).
-     */
-    public record Socket(String name, int joint, Matrix4fc local) {
-        static final Socket MISSING = new Socket("", -1, new Matrix4f());
-
-        /** {@code base · K(joint) · local}: the socket's frame on a body posed into {@code palette}. */
-        public Matrix4f frame(JointPalette palette, Matrix4fc base, Matrix4f dest) {
-            palette.skinMatrix(joint, dest);
-            return base.mul(dest, dest).mul(local);
-        }
+    public SocketSet sockets() {
+        return HostSockets.of(asset, EntityAsset.DEFAULT_VARIANT);
     }
 
     /** Whether any bound clip carries {@link #FOOTSTEP} notifies (else the gait phase plants the feet). */

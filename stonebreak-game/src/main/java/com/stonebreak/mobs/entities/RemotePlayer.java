@@ -121,6 +121,29 @@ public class RemotePlayer extends LivingEntity {
     }
 
     public int getPlayerId() { return playerId; }
+
+    /** The known-looks revision this body is dressed in (#459); -1 = not dressed yet. */
+    private int lookRevision = -1;
+
+    /** Whose look this body wears (#459): its own player's; a decoy wears its caster's. */
+    protected int lookOwnerId() {
+        return playerId;
+    }
+
+    /**
+     * The mounts whose visuals this body wears (#459), dressed in the look the server sent for {@link #lookOwnerId()}
+     * ({@link com.stonebreak.player.appearance.KnownLooks}); re-dressed whenever that look changes.
+     */
+    public com.stonebreak.mobs.sbe.BodyMounts lookMounts() {
+        com.stonebreak.mobs.sbe.BodyMounts mounts = mounts();
+        com.stonebreak.player.appearance.KnownLooks.Entry e =
+                com.stonebreak.player.appearance.KnownLooks.get(lookOwnerId());
+        if (e != null && e.revision() != lookRevision) {
+            com.stonebreak.player.appearance.AppearanceMounts.apply(e.look(), mounts);
+            lookRevision = e.revision();
+        }
+        return mounts;
+    }
     public String getUsername() { return username; }
     public float getPitch() { return pitch; }
     public int getHeldItemId() { return heldItemId; }

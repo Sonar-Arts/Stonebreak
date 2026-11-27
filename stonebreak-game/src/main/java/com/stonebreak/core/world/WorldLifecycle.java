@@ -244,6 +244,7 @@ public final class WorldLifecycle {
         World oldWorld = Game.getWorld();
 
         Player newPlayer = new Player(newWorld);
+        com.stonebreak.player.PlayerLooks.applyTo(newPlayer.mounts());
         System.out.println("[WORLD-ISOLATION] Created fresh player for new world to ensure inventory isolation");
 
         if (newWorld != null) {

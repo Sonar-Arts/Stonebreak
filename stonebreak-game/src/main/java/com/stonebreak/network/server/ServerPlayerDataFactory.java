@@ -47,6 +47,8 @@ public final class ServerPlayerDataFactory {
                 .lastSaved(LocalDateTime.now())
                 .worldName(worldName)
                 .clientSecret(sp.clientSecret()) // stored with the save, checked on takeover (#335)
+                // The look (#459), only once it was set: a save without one loads with the defaults.
+                .appearance(sp.appearanceStored() ? sp.appearance().toJson() : null)
                 // Always set from the server's seats: a client's claimed vehicle never reaches disk.
                 .vehiclePosition(boat != null ? (org.joml.Vector3dc) boat.getPosition() : (org.joml.Vector3dc) null)
                 .build();

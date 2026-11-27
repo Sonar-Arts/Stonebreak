@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -342,11 +343,23 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
      */
     public static SboGameplay.HeldData heldOf(JsonNode h) {
         if (h == null || !h.isObject()) throw new IllegalArgumentException("held must be an object");
+        java.util.LinkedHashMap<String, SboGameplay.HeldPoint> points = new java.util.LinkedHashMap<>();
+        JsonNode p = h.get("points");
+        if (p != null && !p.isNull()) {
+            if (!p.isObject()) throw new IllegalArgumentException("held points must be an object");
+            for (var it = p.fields(); it.hasNext(); ) {
+                var e = it.next();
+                if (!e.getValue().isObject()) throw new IllegalArgumentException("held point " + e.getKey() + " must be an object");
+                points.put(e.getKey(), new SboGameplay.HeldPoint(readVec3(e.getValue().get("position")),
+                        readVec3(e.getValue().get("rotation"))));
+            }
+        }
         return new SboGameplay.HeldData(
                 h.has("socket") ? h.get("socket").asText() : "",
                 readVec3(h.get("position")),
                 readVec3(h.get("rotation")),
-                h.has("scale") ? (float) h.get("scale").asDouble() : 1f);
+                h.has("scale") ? (float) h.get("scale").asDouble() : 1f,
+                points);
     }
 
     /** {@code [x, y, z]}; absent = zero, anything else malformed throws. */
@@ -412,6 +425,14 @@ public final class SboGameplayCodec implements FormatExtensionCodec<SboGameplay>
         n.set("position", encode(held.position()));
         n.set("rotation", encode(held.rotation()));
         n.put("scale", held.scale());
+        if (!held.points().isEmpty()) {
+            ObjectNode points = n.putObject("points");
+            for (Map.Entry<String, SboGameplay.HeldPoint> e : held.points().entrySet()) {
+                ObjectNode point = points.putObject(e.getKey());
+                point.set("position", encode(e.getValue().position()));
+                point.set("rotation", encode(e.getValue().rotation()));
+            }
+        }
         return n;
     }
 

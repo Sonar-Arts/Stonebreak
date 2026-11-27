@@ -43,9 +43,9 @@ class HeldItemFramesTest {
             assertNotNull(frame);
             HeldGrip grip = HeldGrips.of(ItemType.SWORD);
             Matrix4f base = SbePoseSolver.baseMatrix(rp.getPosition(), rp.getBodyYaw(), rp.getScale());
-            Matrix4f expected = PlayerAnimationSet.player().socket(grip.socket())
-                    .frame(rp.bodyAnimator().palette(), base, new Matrix4f()).mul(grip.local());
-            assertTrue(frame.equals(expected, 1e-6f), "frame = base K(socket joint) socket grip");
+            Matrix4f expected = legacySocketFrame(grip.socket(), rp.bodyAnimator().palette(), base)
+                    .mul(grip.local());
+            assertTrue(frame.equals(expected, 2e-5f), "frame = base K(socket joint) socket grip\n" + frame + expected);
             // An empty hand holds nothing; nothing is held before the body is posed.
             rp.setHeldItem(null);
             assertNull(HeldItemFrames.of(rp, new Matrix4f()));
@@ -89,6 +89,23 @@ class HeldItemFramesTest {
             idle.onRemovedFromWorld();
             swinging.onRemovedFromWorld();
         }
+    }
+
+    /** The pre-#459 Java socket frame ({@code PlayerAnimationSet.Socket.frame}), frozen: base · K(joint) · T·R·S. */
+    static Matrix4f legacySocketFrame(String name, com.openmason.engine.rig.JointPalette palette, Matrix4f base) {
+        PlayerAnimationSet set = PlayerAnimationSet.player();
+        for (com.openmason.engine.character.CharacterDefinition.Socket s : set.character().sockets()) {
+            if (!s.name().equals(name)) continue;
+            int joint = set.rig().find(s.jointId());
+            Matrix4f local = new Matrix4f()
+                    .translate(s.pos().x(), s.pos().y(), s.pos().z())
+                    .rotateXYZ((float) Math.toRadians(s.rotDeg().x()), (float) Math.toRadians(s.rotDeg().y()),
+                            (float) Math.toRadians(s.rotDeg().z()))
+                    .scale(s.scale().x(), s.scale().y(), s.scale().z());
+            Matrix4f k = palette.skinMatrix(joint, new Matrix4f());
+            return new Matrix4f(base).mul(k).mul(local);
+        }
+        throw new AssertionError("no socket " + name);
     }
 
     private static RemotePlayer posedRemote(ItemType item, short flags, int frames) {

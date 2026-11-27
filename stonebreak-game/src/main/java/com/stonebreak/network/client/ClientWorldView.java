@@ -297,7 +297,8 @@ public final class ClientWorldView {
         com.stonebreak.ui.characterCreation.CharacterCreationScreen ccs =
                 Game.getInstance() != null ? Game.getInstance().getCharacterCreationScreen() : null;
         com.stonebreak.player.CharacterStats stats = ccs != null ? ccs.getCharacterStats() : null;
-        return (stats != null ? stats : new com.stonebreak.player.CharacterStats(null)).toCreationJson();
+        return com.stonebreak.player.PlayerLooks.withLook(
+                (stats != null ? stats : new com.stonebreak.player.CharacterStats(null)).toCreationJson());
     }
 
     /** The server's restore blob ({@code PlayerDataS2C}); package-private for tests. */
@@ -798,6 +799,8 @@ public final class ClientWorldView {
         chunkHandler.onSessionEnd();
         entityHandler.onSessionEnd();
         playerHandler.onSessionEnd();
+        com.stonebreak.player.PlayerLooks.setChangeSink(null);
+        com.stonebreak.player.appearance.KnownLooks.clear();
         networkClient.shutdown();
         connection = null;
     }
@@ -839,6 +842,8 @@ public final class ClientWorldView {
             case ChatMessageS2C cm -> chatHandler.apply(cm);
             case PlayerStateS2C ps -> playerHandler.handlePlayerState(localPlayerId, ps);
             case PlayerJoinS2C j -> playerHandler.handleJoin(localPlayerId, j);
+            case com.stonebreak.network.packet.player.PlayerAppearanceS2C pa ->
+                playerHandler.handleAppearance(localPlayerId, pa);
             case PlayerLeaveS2C l -> playerHandler.handleLeave(l);
             case PlayerHeldItemS2C h -> playerHandler.handleHeldItem(localPlayerId, h);
             case GiveItemS2C g -> playerHandler.handleGiveItem(g);
@@ -951,6 +956,19 @@ public final class ClientWorldView {
 
     private void handleWelcome(WelcomeS2C w) {
         localPlayerId = w.playerId();
+        // Our look (#459): offer the preferred one (the server takes it only when it keeps none for us), and send
+        // later choices as changes. The server answers with our look either way.
+        ClientConnection lookConn = connection;
+        if (lookConn != null && lookConn.isActive()) {
+            lookConn.send(new com.stonebreak.network.packet.player.PlayerAppearanceC2S(
+                    com.stonebreak.player.PlayerLooks.preferred().toBinary(), true), false);
+        }
+        com.stonebreak.player.PlayerLooks.setChangeSink(look -> {
+            ClientConnection c = connection;
+            if (c != null && c.isActive()) {
+                c.send(new com.stonebreak.network.packet.player.PlayerAppearanceC2S(look.toBinary(), false), false);
+            }
+        });
         serverTerrainModel = w.terrainModel();
         if (secretSink != null && !w.clientSecret().isEmpty() && !w.clientSecret().equals(presentedSecret)) {
             secretSink.accept(w.clientSecret()); // kept for the next join to this server (#335)

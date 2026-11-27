@@ -46,7 +46,7 @@ public final class CharacterCreationActionHandler {
 
     /** Serializes the current character stats and sends them to the server. */
     private void submitCharacterCreation() {
-        byte[] json = state.getCharacterStats().toCreationJson();
+        byte[] json = com.stonebreak.player.PlayerLooks.withLook(state.getCharacterStats().toCreationJson());
         MultiplayerSession.submitCharacterCreation(json);
     }
 

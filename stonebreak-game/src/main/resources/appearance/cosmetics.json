@@ -1,0 +1,28 @@
+{
+  "format": "stonebreak.cosmetics",
+  "version": 1,
+  "comment": "The player's appearance slots (#459) and the items each equipment slot takes. A player's look is an engine Look record (omlook) of these slots: tints are colours (#rrggbb; nothing applies them until the rebuilt player's dye masks, #462), groups are visibility toggles (none yet), equipment slots hold an item id or NONE. The server checks every look against this file. An item hangs on its slot's socket unless it names its own; 'variant' is the asset's appearance variant.",
+  "tints": [
+    { "name": "skin_tint", "default": "#d8a77f" },
+    { "name": "hair_tint", "default": "#4a3222" },
+    { "name": "eye_tint", "default": "#3b6ea5" },
+    { "name": "cloth_tint", "default": "#7a5a3a" }
+  ],
+  "groups": [],
+  "slots": [
+    { "name": "hat", "socket": "Hatzone", "none": "No Hat" },
+    { "name": "hair", "socket": "Hair", "none": "No Hair" },
+    { "name": "accessory", "socket": "Earring", "none": "No Accessory" }
+  ],
+  "items": [
+    { "id": "TOP_HAT", "slot": "hat", "name": "Top Hat", "asset": "/sbe/Clothing/SB_Tophat.sbe" },
+    { "id": "PIRATE_HAT", "slot": "hat", "name": "Pirate Hat", "asset": "/sbe/Clothing/SB_PirateHat.sbe" },
+    { "id": "BANDANA_RED", "slot": "hat", "name": "Red Bandana", "asset": "/sbe/Clothing/SB_Bandana.sbe", "variant": "Red" },
+    { "id": "BANDANA_BLUE", "slot": "hat", "name": "Blue Bandana", "asset": "/sbe/Clothing/SB_Bandana.sbe", "variant": "Blue" },
+    { "id": "BANDANA_GREEN", "slot": "hat", "name": "Green Bandana", "asset": "/sbe/Clothing/SB_Bandana.sbe", "variant": "Green" },
+    { "id": "BANDANA_BLACK", "slot": "hat", "name": "Black Bandana", "asset": "/sbe/Clothing/SB_Bandana.sbe", "variant": "Black" },
+    { "id": "MALE_HAIR_1", "slot": "hair", "name": "Male Hair 1", "asset": "/sbe/PlayerCustomize/SB_MHair1.sbe" },
+    { "id": "MALE_HAIR_2", "slot": "hair", "name": "Male Hair 2", "asset": "/sbe/PlayerCustomize/SB_MHair2.sbe" },
+    { "id": "GOLD_EARRING", "slot": "accessory", "name": "Gold Earring", "asset": "/sbe/Clothing/SB_GoldEarring.sbe" }
+  ]
+}

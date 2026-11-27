@@ -229,9 +229,10 @@ public final class DynamicLights {
      */
     private static void heldTorchPosition(World world, Player player, Vector3d out) {
         if (player.isThirdPerson()) {
-            // Third person (#458): from the torch in the body's hand, like everyone else's.
-            Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(player, new Matrix4f());
-            flameOrChest(world, frame, player.getPosition(), out);
+            // Third person (#458): from the torch in the body's hand, like everyone else's (#459: its flame point).
+            flameOrChest(world, com.stonebreak.rendering.models.entities.HeldItemFrames.point(player,
+                    com.stonebreak.rendering.models.entities.HeldItemFrames.FLAME, new Vector3d()),
+                    player.getPosition(), out);
             return;
         }
         Camera camera = player.getCamera();
@@ -252,32 +253,31 @@ public final class DynamicLights {
      * torch out) or before their body is posed.
      */
     private static void remoteTorchPosition(World world, RemotePlayer rp, Vector3d out) {
-        Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(rp, new Matrix4f());
-        flameOrChest(world, frame, rp.getPosition(), out);
+        flameOrChest(world, heldFlamePoint(rp), rp.getPosition(), out);
     }
 
-    /** The flame of the torch held in {@code frame} (null = not posed), else the holder's chest. */
-    private static void flameOrChest(World world, Matrix4f frame, Vector3d feet, Vector3d out) {
-        if (frame != null && flamePoint(frame, out) && !isSolidAt(world, out)) return;
+    /** The held torch's {@code flame} point (null = not posed / no point), else the holder's chest. */
+    private static void flameOrChest(World world, Vector3d flame, Vector3d feet, Vector3d out) {
+        if (flame != null) {
+            out.set(flame);
+            out.y += FLAME_ABOVE_TIP;
+            if (!isSolidAt(world, out)) return;
+        }
         out.set(feet.x, feet.y + com.stonebreak.player.PlayerCharacter.get().height() * CHEST_FRACTION, feet.z);
     }
 
     /** {@code rp}'s held flame for distance ranking (the chest before its body is posed). */
     private static Vector3d heldFlame(RemotePlayer rp, Vector3d out) {
-        Matrix4f frame = com.stonebreak.rendering.models.entities.HeldItemFrames.of(rp, new Matrix4f());
-        if (frame != null && flamePoint(frame, out)) return out;
+        Vector3d flame = heldFlamePoint(rp);
+        if (flame != null) return out.set(flame.x, flame.y + FLAME_ABOVE_TIP, flame.z);
         Vector3d feet = rp.getPosition();
         return out.set(feet.x, feet.y + com.stonebreak.player.PlayerCharacter.get().height() * CHEST_FRACTION, feet.z);
     }
 
-    /** The flame point of a torch held in {@code frame}; false when the torch sprite has no voxels. */
-    private static boolean flamePoint(Matrix4f frame, Vector3d out) {
-        org.joml.Vector3f tip = com.stonebreak.rendering.models.entities.HeldItemFrames.spriteTip(
-                TorchBlock.item());
-        if (tip == null) return false;
-        com.stonebreak.rendering.models.entities.HeldItemFrames.worldPoint(frame, tip, out);
-        out.y += FLAME_ABOVE_TIP;
-        return true;
+    /** {@code rp}'s held torch flame point (world), or null before its body is posed. */
+    private static Vector3d heldFlamePoint(RemotePlayer rp) {
+        return com.stonebreak.rendering.models.entities.HeldItemFrames.point(rp,
+                com.stonebreak.rendering.models.entities.HeldItemFrames.FLAME, new Vector3d());
     }
 
     private static boolean isSolidAt(World world, Vector3d p) {

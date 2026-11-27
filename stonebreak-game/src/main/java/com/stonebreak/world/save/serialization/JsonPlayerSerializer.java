@@ -57,6 +57,11 @@ public class JsonPlayerSerializer {
         if (player.getClientSecret() != null) {
             json.append("  \"clientSecret\": \"").append(JsonParsingUtil.escapeJson(player.getClientSecret())).append("\",\n");
         }
+        String look = appearanceObject(player.getAppearance());
+        if (look != null) {
+            // The look (#459): the omlook record itself, as a JSON object.
+            json.append("  \"appearance\": ").append(look).append(",\n");
+        }
 
         org.joml.Vector3d vehicle = player.getVehiclePosition();
         if (vehicle != null) {
@@ -237,6 +242,9 @@ public class JsonPlayerSerializer {
                 builder.worldName(worldName);
             }
             builder.clientSecret(JsonParsingUtil.extractStringOptional(json, "clientSecret"));
+            if (json.contains("\"appearance\"")) {
+                builder.appearance(tolerant("appearance", () -> readAppearance(json), (String) null));
+            }
             if (json.contains("\"vehicle\"")) {
                 builder.vehiclePosition(tolerant("vehicle",
                     () -> JsonParsingUtil.extractVector3d(json, "vehicle"), (org.joml.Vector3d) null));
@@ -473,4 +481,38 @@ public class JsonPlayerSerializer {
         }
         return null;
     }
+
+    /** The look record as a one-line JSON object, or null when absent / not an object (never written then). */
+    static String appearanceObject(String lookJson) {
+        if (lookJson == null) return null;
+        try {
+            com.fasterxml.jackson.databind.JsonNode node = LOOK_MAPPER.readTree(lookJson);
+            return node != null && node.isObject() ? LOOK_MAPPER.writeValueAsString(node) : null;
+        } catch (java.io.IOException e) {
+            return null;
+        }
+    }
+
+    /** The {@code appearance} object of a player file or creation blob as JSON text; null when absent or malformed. */
+    public static String appearanceOf(byte[] json) {
+        if (json == null) return null;
+        try {
+            return readAppearance(new String(json, StandardCharsets.UTF_8));
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** The {@code appearance} object of a player file as JSON text, or null. */
+    static String readAppearance(String json) {
+        try {
+            com.fasterxml.jackson.databind.JsonNode node = LOOK_MAPPER.readTree(json).get("appearance");
+            return node != null && node.isObject() ? LOOK_MAPPER.writeValueAsString(node) : null;
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper LOOK_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 }

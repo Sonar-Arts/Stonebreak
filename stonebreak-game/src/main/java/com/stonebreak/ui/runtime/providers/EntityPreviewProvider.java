@@ -5,7 +5,6 @@ import com.openmason.engine.rendering.RenderOrigin;
 import com.openmason.engine.ui.runtime.UiElement;
 import com.stonebreak.core.Game;
 import com.stonebreak.mobs.entities.EntityType;
-import com.stonebreak.mobs.sbe.EntityAttachments;
 import com.openmason.engine.entity.model.EntityAsset;
 import com.stonebreak.mobs.sbe.SbeEntityRegistry;
 import com.openmason.engine.entity.model.EntityGeometry;
@@ -71,7 +70,7 @@ public final class EntityPreviewProvider extends GlPreviewProvider {
 
         if (player) {
             entities.renderPlayerPreview(time, new Vector3f(), 0f, new Vector3f(1f, 1f, 1f),
-                orbit.view(), orbit.projection(), EntityAttachments.LOCAL_PLAYER);
+                orbit.view(), orbit.projection(), com.stonebreak.player.PlayerLooks.previewMounts());
         } else {
             entities.renderEntityPreview(type, variant, text(p, "state", "Idle"), time, new Vector3f(), 0f,
                 new Vector3f(1f, 1f, 1f), orbit.view(), orbit.projection());
@@ -85,7 +84,7 @@ public final class EntityPreviewProvider extends GlPreviewProvider {
 
     static Orbit orbit(UiValue.Obj p, boolean player, float[] b, float time, float aspect) {
         float defaultMargin = player
-            ? (EntityAttachments.get(EntityAttachments.LOCAL_PLAYER).isEmpty() ? 1.15f : 1.3f)
+            ? (com.stonebreak.player.PlayerLooks.previewMounts().hasVisuals() ? 1.3f : 1.15f)
             : 1.25f;
         float margin = (float) number(p, "margin", defaultMargin);
         float el = (float) Math.toRadians(number(p, "elevation", player ? 12.0 : 18.0));
