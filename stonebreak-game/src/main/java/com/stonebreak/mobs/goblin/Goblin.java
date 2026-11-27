@@ -69,7 +69,10 @@ public class Goblin extends LivingEntity {
     /** The authored model is ~2.25 blocks tall; goblins stand well under a player. */
     public static final float MODEL_SCALE = 0.6f;
 
-    private static final float CHASE_SPEED = 1.3f;
+    /** Running at the player or its prey (a multiple of its move speed): the animation graph's run point too. */
+    public static final float CHASE_SPEED = 1.3f;
+    /** Wandering about: the animation graph's walk point. */
+    public static final float WANDER_SPEED = 0.8f;
     /** Creeping up on something it heard or was told about. */
     private static final float INVESTIGATE_SPEED = 0.9f;
     private static final float SEARCH_SPEED = 0.8f;
@@ -121,7 +124,7 @@ public class Goblin extends LivingEntity {
                 new FollowLeaderBehavior(this),
                 new LoiterBehavior(this),
                 StandStillBehavior.idle(0.5f, 2.0f, 6.0f),
-                new WanderBehavior(0.5f, 3.0f, 8.0f, 0.8f));
+                new WanderBehavior(0.5f, 3.0f, 8.0f, WANDER_SPEED));
         this.interactionRange = 2.5f;
         loadout.applyTo(mounts());
     }
@@ -245,6 +248,7 @@ public class Goblin extends LivingEntity {
 
     @Override
     public void onRemovedFromWorld() {
+        super.onRemovedFromWorld();
         if (pack != null) {
             // Despawned or unloaded alive: the pack goes on without it, and a camp goblin goes
             // back on its camp's roster, to return at the fire.

@@ -25,9 +25,14 @@ public final class PlayerPoseInputs {
     public int heldKind;
     /** Bow draw 0..1 (#458; 0 = not drawing). */
     public float bowDraw;
-    /** Head look relative to the body, degrees (the head joint's pre-rotation). */
+    /**
+     * Head look relative to the body, degrees (#460): yaw about the body's up axis, then pitch; the graph's look
+     * target is placed along it and the graph's limits clamp it.
+     */
     public float headYaw;
     public float headPitch;
+    /** Play rate of the gait clips (#460); 1 = as authored (the player). */
+    public float gaitRate = 1f;
 
     /** Sets every input from replicated-style state. Returns this. */
     public PlayerPoseInputs set(short flags, float horizontalSpeed, boolean seated, float headYaw, float headPitch) {

@@ -390,7 +390,7 @@ public class Player implements com.stonebreak.mobs.sbe.MountHost {
      */
     public float getBodyYaw() { return bodyAnimation.getBodyOrientation().getBodyYaw(); }
 
-    /** Third-person head yaw relative to the body, clamped to its swivel range. */
+    /** Third-person head yaw relative to the body (unclamped: the animation graph's look limits clamp it, #460). */
     public float getThirdPersonHeadYaw() {
         Vector3f front = camera.getFront();
         return bodyAnimation.getBodyOrientation()
@@ -398,7 +398,7 @@ public class Player implements com.stonebreak.mobs.sbe.MountHost {
     }
 
     /**
-     * Third-person head pitch, clamped so the head never over-rotates. The
+     * Third-person head pitch (unclamped: the animation graph's look limits clamp it, #460). The
      * camera pitch is passed through directly: the third-person body's 180°
      * facing flip (see {@link PlayerBodyOrientation#modelYawFromDirection}) puts
      * a {@code rotateY(180°)} in the model's base transform, which inverts the

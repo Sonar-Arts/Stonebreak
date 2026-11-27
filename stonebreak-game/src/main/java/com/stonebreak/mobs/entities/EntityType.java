@@ -297,6 +297,20 @@ public enum EntityType {
     }
 
     /**
+     * How this type rides an animation graph (#460), or null for one posed by named clips from its behaviour state.
+     * A type with a spec is graph-animated when its SBE carries a character naming an {@code animGraph}
+     * ({@link com.stonebreak.mobs.sbe.MobAnimationSet}). Goblins walk and run on the player's locomotion clips,
+     * retargeted; their own clips play as montages (attacks).
+     */
+    public com.stonebreak.mobs.sbe.MobGraphSpec graphAnimation() {
+        return switch (this) {
+            case GOBLIN -> new com.stonebreak.mobs.sbe.MobGraphSpec(com.stonebreak.player.PlayerCharacter.ASSET_ID,
+                    com.stonebreak.mobs.goblin.Goblin.WANDER_SPEED, com.stonebreak.mobs.goblin.Goblin.CHASE_SPEED);
+            default -> null;
+        };
+    }
+
+    /**
      * True when server-side entities of this type replicate to clients as network shadows.
      * The single source of truth for replication scope — {@code EntityReplicationRegistry}
      * holds the matching metadata + shadow factories. BOBBER and ILLUSION_DECOY are server

@@ -1340,8 +1340,8 @@ public class Main {
      * grip socket and swinging every 2.5 s (the remote-player held-item path seen from the front); the local player
      * selects the same item once it is in its hotbar. {@code -Dstonebreak.autofigure.look=hat:TOP_HAT,hair:MALE_HAIR_1,...}
      * gives the figure a look (#459, through the known looks like a real remote player) and
-     * {@code -Dstonebreak.autofigure.decoy=true} puts its decoy beside it (decoys wear their caster's look). Inert
-     * unless set.
+     * {@code -Dstonebreak.autofigure.decoy=true} puts its decoy beside it (decoys wear their caster's look);
+     * {@code -Dstonebreak.autofigure.pitch=<degrees>} pitches its replicated look (#460). Inert unless set.
      */
     private void maybeAutoFigure() {
         String spec = System.getProperty("stonebreak.autofigure");
@@ -1375,6 +1375,10 @@ public class Main {
                     new com.stonebreak.network.client.NetworkInterpolator();
             interp.seed(at.x, at.y, at.z, yaw, 0f);
             autoFigure.setInterpolator(interp);
+            // -Dstonebreak.autofigure.pitch=<degrees>: the figure's replicated look pitch, as a state packet would
+            // set it (#460 head-look shots; the graph's look limits clamp it at +-45).
+            autoFigure.applyNetworkState(at.x, at.y, at.z, yaw,
+                    Float.parseFloat(System.getProperty("stonebreak.autofigure.pitch", "0")));
             autoFigure.setHeldItem(item);
             Game.getEntityManager().addEntity(autoFigure);
             System.out.println("[autofigure] " + objectId + " -> " + item + " at " + at);

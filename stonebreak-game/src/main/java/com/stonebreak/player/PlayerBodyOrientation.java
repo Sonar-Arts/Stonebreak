@@ -10,7 +10,9 @@ import org.joml.Vector3f;
  * decides how the body turns in response. The body faces its movement direction
  * while walking, and — when stationary — rotates to face the look direction so the
  * model visibly turns to where the player is looking. The head leads the turn via
- * a clamped residual offset, then the body settles facing the look direction.
+ * the residual look offset, then the body settles facing the look direction. The
+ * head's look limits are the player animation graph's ({@code aim} on
+ * {@code role:head}, #460), not this class's.
  *
  * <p>All yaw values are in the player model's facing space (degrees). Use
  * {@link #modelYawFromDirection} to convert a world XZ direction (camera front,
@@ -22,10 +24,6 @@ public final class PlayerBodyOrientation {
     private static final float BODY_TURN_DEG_PER_SEC = 600f;
     /** Horizontal speed (blocks/frame) above which the body faces movement. */
     private static final float WALK_SPEED_THRESHOLD = 0.5f;
-    /** Maximum head swivel away from the body facing before the body follows. */
-    private static final float MAX_HEAD_YAW = 70f;
-    /** Maximum head pitch up/down. */
-    private static final float MAX_HEAD_PITCH = 45f;
 
     /** Lower-body facing in model space (degrees). */
     private float bodyYaw = 0f;
@@ -52,7 +50,7 @@ public final class PlayerBodyOrientation {
             targetYaw = modelYawFromDirection(velocity.x, velocity.z);
         } else {
             // Idle: face the look direction so the body turns to where the player
-            // looks. The head leads via the clamped residual in getHeadYaw().
+            // looks. The head leads via the residual in getHeadYaw().
             targetYaw = lookYaw;
         }
         turnToward(targetYaw, dt);
@@ -86,14 +84,17 @@ public final class PlayerBodyOrientation {
         return bodyYaw;
     }
 
-    /** Head yaw relative to the body, clamped to the comfortable swivel range. */
+    /**
+     * Where the head should look relative to the body: the look yaw minus the body facing, wrapped to (-180, 180].
+     * Unclamped: the animation graph's look limits clamp it (#460).
+     */
     public float getHeadYaw(float lookYaw) {
-        return clamp(wrapDegrees(lookYaw - bodyYaw), -MAX_HEAD_YAW, MAX_HEAD_YAW);
+        return wrapDegrees(lookYaw - bodyYaw);
     }
 
-    /** Head pitch, clamped so the head never over-rotates up/down. */
+    /** Head pitch: the look pitch as is (the animation graph's look limits clamp it, #460). */
     public float getHeadPitch(float lookPitch) {
-        return clamp(lookPitch, -MAX_HEAD_PITCH, MAX_HEAD_PITCH);
+        return lookPitch;
     }
 
     /** Smoothly rotates {@link #bodyYaw} toward {@code targetYaw} at the turn rate. */
@@ -113,9 +114,5 @@ public final class PlayerBodyOrientation {
         if (deg > 180f) deg -= 360f;
         else if (deg <= -180f) deg += 360f;
         return deg;
-    }
-
-    private static float clamp(float v, float min, float max) {
-        return v < min ? min : (v > max ? max : v);
     }
 }

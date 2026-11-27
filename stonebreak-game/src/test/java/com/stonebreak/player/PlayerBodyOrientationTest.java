@@ -1,7 +1,6 @@
 package com.stonebreak.player;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.joml.Vector3f;
 import org.junit.jupiter.api.Test;
@@ -14,8 +13,6 @@ class PlayerBodyOrientationTest {
 
     private static final float DT = 1f / 60f;
     private static final Vector3f STILL = new Vector3f(0f, 0f, 0f);
-    /** Mirrors PlayerBodyOrientation.MAX_HEAD_YAW (private). */
-    private static final float MAX_HEAD_YAW = 70f;
 
     /** Advances the orientation many ticks so any smoothed turn converges. */
     private static void settle(PlayerBodyOrientation o, Vector3f velocity, float lookYaw) {
@@ -45,11 +42,10 @@ class PlayerBodyOrientationTest {
         o.update(DT, STILL, 0f); // bodyYaw -> 0
 
         // A single tick after a large sudden look change: the body has only turned a
-        // little (rate-limited), so the head leads, clamped to its swivel range.
+        // little (rate-limited, 600 deg/s), so the head leads by the rest of the turn.
         o.update(DT, STILL, 120f);
         float headYaw = o.getHeadYaw(120f);
-        assertTrue(headYaw > 0f, "head should lead the lagging body");
-        assertTrue(headYaw <= MAX_HEAD_YAW + 1e-3f, "head lead is clamped");
+        assertEquals(110f, headYaw, 1e-3f, "head should lead the lagging body by the remaining turn");
     }
 
     @Test
@@ -64,22 +60,23 @@ class PlayerBodyOrientationTest {
                 "moving body should face the horizontal movement direction");
     }
 
+    /** The look limits are the animation graph's (#460): the orientation hands the look on unclamped. */
     @Test
-    void headPitchIsClamped() {
+    void headPitchIsTheLookPitch() {
         PlayerBodyOrientation o = new PlayerBodyOrientation();
         o.update(DT, STILL, 0f);
-        assertEquals(45f, o.getHeadPitch(80f), 1e-3f);
-        assertEquals(-45f, o.getHeadPitch(-80f), 1e-3f);
+        assertEquals(80f, o.getHeadPitch(80f), 1e-3f);
+        assertEquals(-80f, o.getHeadPitch(-80f), 1e-3f);
         assertEquals(20f, o.getHeadPitch(20f), 1e-3f);
     }
 
     @Test
-    void headYawIsClampedToSwivelRange() {
+    void headYawIsTheWrappedLookOffset() {
         PlayerBodyOrientation o = new PlayerBodyOrientation();
         o.update(DT, STILL, 0f); // bodyYaw -> 0
-        // Without ticking further, a sudden 120-degree look offset clamps the head.
-        assertTrue(Math.abs(o.getHeadYaw(120f)) <= MAX_HEAD_YAW + 1e-3f);
-        assertEquals(MAX_HEAD_YAW, o.getHeadYaw(120f), 1e-3f);
+        assertEquals(120f, o.getHeadYaw(120f), 1e-3f);
+        assertEquals(-150f, o.getHeadYaw(210f), 1e-3f);
+        assertEquals(180f, o.getHeadYaw(-180f), 1e-3f);
     }
 
     /** Normalizes to (-180, 180] for stable comparison. */

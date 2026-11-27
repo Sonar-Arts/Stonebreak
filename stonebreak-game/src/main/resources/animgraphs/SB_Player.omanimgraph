@@ -44,6 +44,11 @@
     {
       "name": "firstPerson",
       "type": "float"
+    },
+    {
+      "name": "gaitRate",
+      "type": "float",
+      "default": 1
     }
   ],
   "slots": [
@@ -87,12 +92,14 @@
       "id": "walk",
       "type": "clip",
       "slot": "walking",
+      "rateParam": "gaitRate",
       "sync": "gait"
     },
     {
       "id": "sprint",
       "type": "clip",
       "slot": "sprinting",
+      "rateParam": "gaitRate",
       "sync": "gait"
     },
     {
@@ -648,7 +655,7 @@
             {
               "param": "attacking",
               "op": "==",
-              "value": false
+              "value": 0
             }
           ],
           "blend": 0.12,
@@ -661,7 +668,7 @@
             {
               "param": "attacking",
               "op": "==",
-              "value": false
+              "value": 0
             }
           ],
           "blend": 0.12,
@@ -674,7 +681,7 @@
             {
               "param": "attacking",
               "op": "==",
-              "value": false
+              "value": 0
             }
           ],
           "blend": 0.12,
@@ -687,7 +694,7 @@
             {
               "param": "attacking",
               "op": "==",
-              "value": false
+              "value": 0
             }
           ],
           "blend": 0.12,
@@ -707,6 +714,33 @@
           "view": "firstPerson"
         }
       ]
+    }
+  ],
+  "targets": [
+    "lookAt"
+  ],
+  "modifiers": [
+    {
+      "type": "aim",
+      "joints": [
+        {
+          "joint": "role:head",
+          "limit": {
+            "min": [
+              -45.0,
+              -70.0,
+              0.0
+            ],
+            "max": [
+              45.0,
+              70.0,
+              0.0
+            ],
+            "order": "yxz"
+          }
+        }
+      ],
+      "target": "lookAt"
     }
   ],
   "editor": {

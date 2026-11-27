@@ -192,10 +192,10 @@ public class RemotePlayer extends LivingEntity {
     /** Body facing in SBE model space (degrees) — what renderers should rotate the figure by. */
     public float getBodyYaw() { return bodyOrientation.getBodyYaw(); }
 
-    /** Head yaw relative to the body, clamped to the comfortable swivel range. */
+    /** Head yaw relative to the body (unclamped: the animation graph's look limits clamp it, #460). */
     public float getHeadYaw() { return bodyOrientation.getHeadYaw(lookModelYaw); }
 
-    /** Head pitch from the replicated camera pitch, clamped. */
+    /** Head pitch from the replicated camera pitch (the animation graph's look limits clamp it, #460). */
     public float getHeadPitch() { return bodyOrientation.getHeadPitch(pitch); }
 
     /**

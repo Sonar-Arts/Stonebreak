@@ -57,6 +57,10 @@ public abstract class LivingEntity extends Entity {
      * through {@link #getAI()}.
      */
     protected MobAI mobAI;
+    /** Client: the graph-animated body (#460), built on the first visual update of a graph-animated type. */
+    private com.stonebreak.mobs.sbe.MobBodyAnimator bodyAnimator;
+    private boolean bodyAnimatorUnavailable;
+    private final Vector3d graphPrevPosition = new Vector3d();
 
     /**
      * Clip clock for SBE-driven rendering (the engine's native clip clock while this entity is in an
@@ -615,6 +619,52 @@ public abstract class LivingEntity extends Entity {
         clipClock.advance(deltaTime, mobAI != null ? deltaTime : 0.0f);
         if (footsteps != null) {
             footsteps.updateSounds(this); // stride from the interpolated position
+        }
+        animateGraphBody(deltaTime);
+    }
+
+    /**
+     * Poses a graph-animated mob (#460, {@link com.stonebreak.mobs.sbe.MobAnimationSet}) for the frame: client only
+     * (the server never draws), from the replicated behaviour state and the interpolated displacement.
+     */
+    private void animateGraphBody(float deltaTime) {
+        if (mobAI == null || bodyAnimatorUnavailable) return;
+        if (bodyAnimator == null) {
+            com.stonebreak.mobs.sbe.MobAnimationSet set = com.stonebreak.mobs.sbe.MobAnimationSet.of(getType());
+            if (set == null) {
+                bodyAnimatorUnavailable = true;
+                return;
+            }
+            bodyAnimator = new com.stonebreak.mobs.sbe.MobBodyAnimator(set);
+            graphPrevPosition.set(position);
+        }
+        double dx = position.x - graphPrevPosition.x, dz = position.z - graphPrevPosition.z;
+        graphPrevPosition.set(position);
+        float groundSpeed = deltaTime > 0f ? (float) Math.sqrt(dx * dx + dz * dz) / deltaTime : 0f;
+        try {
+            bodyAnimator.update(deltaTime, groundSpeed, getMoveSpeed(), scale.y, mobAI.getCurrentState(),
+                    mobAI.getCurrentState() == com.stonebreak.mobs.entities.ai.MobBehaviorState.SWIMMING
+                            || isInWater());
+        } catch (RuntimeException e) {
+            // Never take the frame down for a pose: this mob goes back to its named clips.
+            org.slf4j.LoggerFactory.getLogger(LivingEntity.class)
+                    .error("{}: graph animation failed; named clips from now on", getType(), e);
+            bodyAnimator.close();
+            bodyAnimator = null;
+            bodyAnimatorUnavailable = true;
+        }
+    }
+
+    /** This mob's graph-animated body (#460), or null: not graph-animated, or not posed on this side yet. */
+    public com.stonebreak.mobs.sbe.MobBodyAnimator graphBody() {
+        return bodyAnimator != null && bodyAnimator.posed() ? bodyAnimator : null;
+    }
+
+    @Override
+    public void onRemovedFromWorld() {
+        if (bodyAnimator != null) {
+            bodyAnimator.close();
+            bodyAnimator = null;
         }
     }
 

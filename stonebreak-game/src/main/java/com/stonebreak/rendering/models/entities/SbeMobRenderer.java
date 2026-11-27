@@ -12,7 +12,8 @@ import org.joml.Vector4f;
  * from the registry by the type's object id, clip name from
  * {@link com.stonebreak.mobs.sbe.MobStateMapping}, clip time from
  * {@code MobAI.clipTime}, and ground anchoring so the feet rest on the collision
- * ground. Provides the lit colour draw (plus socket attachments), the
+ * ground. A graph-animated mob (#460, {@code LivingEntity.graphBody()}) draws its
+ * graph palette instead, in every pass. Provides the lit colour draw (plus socket attachments), the
  * flat-colour depth-only draw, the debug wireframe, and the glossary preview.
  * New mobs need no renderer changes at all.
  */
@@ -44,11 +45,32 @@ final class SbeMobRenderer {
         return mob.getAI().clipTime();
     }
 
+    /**
+     * A graph-animated mob's palette (#460) and its render-space base matrix, or null for a mob posed by named
+     * clips. Every pass below draws this one pose.
+     */
+    private static Matrix4f graphBase(LivingEntity mob, com.openmason.engine.entity.model.EntityAsset asset) {
+        if (mob.graphBody() == null) return null;
+        return SbePoseSolver.baseMatrix(SbeRenderSupport.groundAnchoredPosition(mob, asset), mob.getRotation().y,
+                mob.getScale());
+    }
+
     /** Lit, textured draw of the mob followed by its socket attachments. */
     void render(LivingEntity mob, Matrix4f viewMatrix, Matrix4f projectionMatrix,
                 com.stonebreak.world.World world, org.joml.Vector3dc cameraPos) {
         EntityType entityType = mob.getType();
         com.openmason.engine.entity.model.EntityAsset asset = assetFor(entityType);
+        Matrix4f base = graphBase(mob, asset);
+        if (base != null) {
+            com.openmason.engine.rig.JointPalette posed = mob.graphBody().palette();
+            sbeEntityRenderer.setLook(lookOf(mob, cameraPos));
+            sbeEntityRenderer.renderPosed(asset, mob.getTextureVariant(), posed, base, viewMatrix, projectionMatrix,
+                    world, cameraPos);
+            sbeEntityRenderer.setLook(SbeEntityRenderer.Look.NONE);
+            attachmentRenderer.renderPosed(mob.mountsIfAny(), asset, mob.getTextureVariant(), posed, base,
+                    viewMatrix, projectionMatrix, world, cameraPos);
+            return;
+        }
         String stateName = stateName(entityType, mob);
         float clipTime = clipTime(mob);
         org.joml.Vector3d anchoredPos = SbeRenderSupport.groundAnchoredPosition(mob, asset);
@@ -103,6 +125,12 @@ final class SbeMobRenderer {
     void renderColored(LivingEntity mob, Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector4f color) {
         EntityType type = mob.getType();
         com.openmason.engine.entity.model.EntityAsset asset = assetFor(type);
+        Matrix4f base = graphBase(mob, asset);
+        if (base != null) {
+            sbeEntityRenderer.renderColoredPosed(asset, mob.getTextureVariant(), mob.graphBody().palette(), base,
+                    viewMatrix, projectionMatrix, color);
+            return;
+        }
         sbeEntityRenderer.renderColored(
                 asset,
                 mob.getTextureVariant(),
@@ -116,6 +144,12 @@ final class SbeMobRenderer {
     void renderWireframe(LivingEntity mob, Matrix4f viewMatrix, Matrix4f projectionMatrix, Vector4f color) {
         EntityType entityType = mob.getType();
         com.openmason.engine.entity.model.EntityAsset asset = assetFor(entityType);
+        Matrix4f base = graphBase(mob, asset);
+        if (base != null) {
+            sbeEntityRenderer.renderWireframePosed(asset, mob.getTextureVariant(), mob.graphBody().palette(), base,
+                    viewMatrix, projectionMatrix, color);
+            return;
+        }
         sbeEntityRenderer.renderWireframe(
                 asset,
                 mob.getTextureVariant(),

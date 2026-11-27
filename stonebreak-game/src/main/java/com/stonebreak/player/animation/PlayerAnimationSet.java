@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 /**
  * What every body of one player model shares (#457): the model, its rig, its character definition, its animation
@@ -58,6 +59,13 @@ public final class PlayerAnimationSet {
     public static final String GAIT_NODE = "gait";
     /** The notify that plants a foot; every other notify name plays the asset's FX/sound event of that name. */
     public static final String FOOTSTEP = "footstep";
+    /**
+     * The head's look target (#460): a model-space point the graph's {@code aim} modifier turns {@code role:head}
+     * toward, within the graph's own look limits (yaw x pitch, {@code order: yxz}) unless the character has some.
+     */
+    public static final String LOOK_AT = "lookAt";
+    /** Play rate of the gait clips (#460): 1 for the player; a smaller body sets ground speed / clip speed. */
+    public static final String GAIT_RATE = "gaitRate";
 
     private static volatile PlayerAnimationSet player;
     private static volatile PlayerAnimationSet firstPersonArm;
@@ -73,6 +81,9 @@ public final class PlayerAnimationSet {
     final int heldKind, action, bowDraw;
     final int gaitNode;
     final int headJoint;
+    final int lookAt, gaitRate;
+    /** The head joint's rest position, model space (the look origin before the first pose). */
+    final Vector3f headRest = new Vector3f();
 
     /** The player character's set (SB_Player + the graph its .omchar {@code animGraph} names). Any thread. */
     public static PlayerAnimationSet player() {
@@ -155,6 +166,14 @@ public final class PlayerAnimationSet {
         this.bowDraw = graph.param(BOW_DRAW);
         this.gaitNode = graph.node(GAIT_NODE);
         this.headJoint = rig.headJoint();
+        this.lookAt = graph.target(LOOK_AT);
+        this.gaitRate = graph.param(GAIT_RATE);
+        if (headJoint >= 0) {
+            Matrix4f[] world = new Matrix4f[rig.jointCount()];
+            for (int i = 0; i < world.length; i++) world[i] = new Matrix4f();
+            rig.restWorld(world, null);
+            world[headJoint].getTranslation(headRest);
+        }
     }
 
     private static AnimGraph readGraph(String path) {
@@ -169,8 +188,16 @@ public final class PlayerAnimationSet {
 
     /** A new graph instance with every available slot bound. Owned by the caller (close it). */
     public AnimGraphInstance newInstance() {
+        return newInstance(true);
+    }
+
+    /**
+     * A new graph instance; {@code bindClips} false leaves every slot unbound, so the graph poses the rest pose and
+     * only its modifiers move joints (tests that isolate the head look). Owned by the caller (close it).
+     */
+    public AnimGraphInstance newInstance(boolean bindClips) {
         AnimGraphInstance instance = AnimGraphInstance.create(graph, rig, character);
-        for (int i = 0; i < slotClips.length; i++) {
+        for (int i = 0; bindClips && i < slotClips.length; i++) {
             if (slotClips[i] != null) instance.bindSlot(i, slotClips[i]);
         }
         return instance;

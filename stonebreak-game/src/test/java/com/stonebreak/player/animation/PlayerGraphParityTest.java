@@ -6,6 +6,7 @@ import com.stonebreak.mobs.sbe.AnimState;
 import com.stonebreak.network.packet.player.PlayerStateFlags;
 import com.stonebreak.rendering.models.entities.SbePoseSolver;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +23,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * settled - every joint's skin matrix against {@link SbePoseSolver} (the old path, still the mobs' path) given the
  * same clip, the same clip time (read from the graph) and the same head look. What changed on purpose: transitions now
  * blend (the old code cut), and the clips play from their own clocks.
+ *
+ * <p><b>Head look (#460, reviewed re-derivation)</b>: the look is the graph's {@code aim} on {@code role:head} toward a
+ * look target, no longer a pre-rotation on top of the clip's head. Every shipped body clip moves the head chain a
+ * little (idle breathes, the walk sways the torso ~1 degree), which the old pre-rotation rode and the aim now holds
+ * still: so every joint OUTSIDE the head's subtree must still match the old pose exactly, and the head's forward axis
+ * is the look direction. {@code com.stonebreak.player.PlayerHeadLookTest} pins the look itself against the old
+ * pipeline over the rest pose (limits included) and on local and remote bodies.
  */
 class PlayerGraphParityTest {
 
@@ -30,6 +38,8 @@ class PlayerGraphParityTest {
     private static final float HEAD_PITCH = -12f;
     /** Native graph (double compose) vs ABI 1 rig pose over the same float clip math. */
     private static final float EPS = 2e-5f;
+    /** The aimed head's forward vs the look direction, degrees (target 64 units out, origin one frame old). */
+    private static final double LOOK_EPS_DEG = 0.01;
 
     @BeforeAll
     static void needsCenda() {
@@ -59,6 +69,7 @@ class PlayerGraphParityTest {
                 float worst = compare(body.palette(), AnimState.single(c.state, t));
                 report.add(c.name + " t=" + t + " worst=" + worst);
                 assertTrue(worst <= EPS, c.name + ": graph differs from the old pose by " + worst);
+                assertLooksAlongTheLook(body.palette(), c.name);
             }
         }
         System.out.println("[PlayerGraphParityTest] " + report);
@@ -82,6 +93,7 @@ class PlayerGraphParityTest {
                         List.of(new AnimState.Overlay("attacking", punch, 1f)));
                 float worst = compare(body.palette(), old);
                 assertTrue(worst <= EPS, base + " + punch differs from the old overlay by " + worst);
+                assertLooksAlongTheLook(body.palette(), base + " + punch");
             }
         }
     }
@@ -93,7 +105,7 @@ class PlayerGraphParityTest {
             PlayerPoseInputs in = new PlayerPoseInputs().standing();
             run(body, in, 0.5f);
             assertEquals(0f, compare(arm, body.palette(), AnimState.single("idle", time(arm, body, "idle")), 0f, 0f,
-                    true));
+                    true, false));
             in.attacking = true;
             run(body, in, DT);
             in.attacking = false;
@@ -102,7 +114,7 @@ class PlayerGraphParityTest {
                     List.of(new AnimState.Overlay("attacking", time(arm, body, "punch"), 1f)));
             // Joints that draw: the arm's three bones bind no geometry (parallel to its parts, unweighted), and the
             // graph's part-addressed mask leaves them at the idle pose where the old name mask also moved them.
-            float worst = compare(arm, body.palette(), old, 0f, 0f, true);
+            float worst = compare(arm, body.palette(), old, 0f, 0f, true, false);
             assertTrue(worst <= EPS, "first-person punch differs from the old overlay by " + worst);
         }
     }
@@ -137,13 +149,32 @@ class PlayerGraphParityTest {
         return out[1];
     }
 
+    /** Every joint outside the head's subtree (the head is the look's; see the class doc). */
     private float compare(JointPalette graph, AnimState old) {
-        return compare(set, graph, old, HEAD_YAW, HEAD_PITCH, false);
+        return compare(set, graph, old, HEAD_YAW, HEAD_PITCH, false, true);
+    }
+
+    /** The head's forward axis (-Z) points along Ry(HEAD_YAW) Rx(HEAD_PITCH) applied to the model's forward (-Z). */
+    private void assertLooksAlongTheLook(JointPalette graph, String what) {
+        Vector3f forward = graph.worldMatrix(set.headJoint, new Matrix4f()).transformDirection(new Vector3f(0, 0, -1))
+                .normalize();
+        Vector3f look = new Vector3f(0, 0, -1).rotateX((float) Math.toRadians(HEAD_PITCH))
+                .rotateY((float) Math.toRadians(HEAD_YAW));
+        double angle = Math.toDegrees(forward.angle(look));
+        assertTrue(angle <= LOOK_EPS_DEG, what + ": head looks " + angle + " degrees off the look direction");
+    }
+
+    /** Whether joint {@code j} is {@code root} or below it. */
+    static boolean inSubtree(com.openmason.engine.rig.Rig rig, int j, int root) {
+        for (int k = j; k >= 0; k = rig.joints().get(k).parent()) {
+            if (k == root) return true;
+        }
+        return false;
     }
 
     /** Worst absolute difference over every joint's skin matrix (model space). */
     private static float compare(PlayerAnimationSet s, JointPalette graph, AnimState old, float headYaw,
-                                 float headPitch, boolean drawnJointsOnly) {
+                                 float headPitch, boolean drawnJointsOnly, boolean skipHead) {
         JointPalette expected = SbePoseSolver.pose(s.geometry(), s.asset(), old, new Matrix4f(), headYaw, headPitch,
                 null, new JointPalette());
         assertEquals(expected.count(), graph.count(), "joint count");
@@ -154,6 +185,7 @@ class PlayerGraphParityTest {
         float[] fb = new float[16];
         for (int j = 0; j < expected.count(); j++) {
             if (drawnJointsOnly && !s.rig().joints().get(j).hasGeometry()) continue;
+            if (skipHead && inSubtree(s.rig(), j, s.headJoint)) continue;
             expected.skinMatrix(j, a).get(fa);
             graph.skinMatrix(j, b).get(fb);
             for (int k = 0; k < 16; k++) worst = Math.max(worst, Math.abs(fa[k] - fb[k]));

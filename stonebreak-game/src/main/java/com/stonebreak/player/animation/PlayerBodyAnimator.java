@@ -2,6 +2,8 @@ package com.stonebreak.player.animation;
 
 import com.openmason.engine.animgraph.AnimGraphInstance;
 import com.openmason.engine.rig.JointPalette;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 /**
  * One player-shaped body's animation (#457): a graph instance of its {@link PlayerAnimationSet}, evaluated ONCE per
@@ -45,6 +47,11 @@ public final class PlayerBodyAnimator implements AutoCloseable {
     private final AnimGraphInstance instance;
     private final JointPalette palette = new JointPalette();
     private final float[] node = new float[3];
+    private final Matrix4f scratch = new Matrix4f();
+    private final Vector3f origin = new Vector3f();
+
+    /** How far ahead of the head the look target sits, model units. */
+    static final float LOOK_DISTANCE = 64f;
 
     private float pendingDt;
     private int framesSince;
@@ -55,8 +62,13 @@ public final class PlayerBodyAnimator implements AutoCloseable {
     private float gaitPhase;
 
     public PlayerBodyAnimator(PlayerAnimationSet set) {
+        this(set, true);
+    }
+
+    /** {@code bindClips} false: the graph over the rest pose (see {@link PlayerAnimationSet#newInstance(boolean)}). */
+    public PlayerBodyAnimator(PlayerAnimationSet set, boolean bindClips) {
         this.set = set;
-        this.instance = set.newInstance();
+        this.instance = set.newInstance(bindClips);
     }
 
     /** The player character's body. */
@@ -100,8 +112,8 @@ public final class PlayerBodyAnimator implements AutoCloseable {
         if (set.action >= 0) g.setInt(set.action, in.action);
         if (set.heldKind >= 0) g.setInt(set.heldKind, in.heldKind);
         if (set.bowDraw >= 0) g.setFloat(set.bowDraw, in.bowDraw);
-        g.clearExtras();
-        if (in.headYaw != 0f || in.headPitch != 0f) g.extra(set.headJoint, in.headYaw, in.headPitch, 0f, 0f, 0f);
+        if (set.gaitRate >= 0) g.setFloat(set.gaitRate, in.gaitRate);
+        aimHead(g, in);
         g.evaluate(pendingDt, null, palette);
         pendingDt = 0f;
         framesSince = 0;
@@ -122,6 +134,26 @@ public final class PlayerBodyAnimator implements AutoCloseable {
             }
         }
         if (contact && feet) events.footstep();
+    }
+
+    /**
+     * Points the graph's {@link PlayerAnimationSet#LOOK_AT} target (#460) {@link #LOOK_DISTANCE} model units from the
+     * head along the look: {@code Ry(headYaw) Rx(headPitch)} applied to the model's forward axis - the turn the old
+     * head extra pre-rotated the head by (the player character faces -Z). The graph's aim modifier turns the head
+     * there and applies the look limits. The origin is the head as last posed (its rest position before the first
+     * pose); at this distance the frame's lag of the origin moves the look by well under 0.01 degrees.
+     */
+    private void aimHead(AnimGraphInstance g, PlayerPoseInputs in) {
+        if (set.lookAt < 0) return;
+        double yaw = Math.toRadians(in.headYaw), pitch = Math.toRadians(in.headPitch);
+        float cp = (float) Math.cos(pitch);
+        float dx = (float) -Math.sin(yaw) * cp;
+        float dy = (float) Math.sin(pitch);
+        float dz = (float) -Math.cos(yaw) * cp;
+        Vector3f head = posed && set.headJoint >= 0 ? palette.worldMatrix(set.headJoint, scratch).getTranslation(origin)
+                : origin.set(set.headRest);
+        g.setTarget(set.lookAt, AnimGraphInstance.TARGET_MODEL, head.x + dx * LOOK_DISTANCE, head.y + dy * LOOK_DISTANCE,
+                head.z + dz * LOOK_DISTANCE);
     }
 
     /** Reads the gait blend: phase for the bob, one contact on entry and per half cycle (at most one per update). */
